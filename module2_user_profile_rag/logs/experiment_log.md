@@ -45,6 +45,7 @@
 | 检索过滤 | 相对下限 `relative_ratio=0.8` + 绝对下限 `0.10`（Iter 11 标定） |
 | 画像后端 | `heuristic`（关键词规则基线） |
 | 测试集 | `data/profile_samples.json`（15 条 / 50 标签）+ `data/memory_eval.json`（30 记忆 / 30 查询） |
+| 版本控制 | git 2.54.0，分支 `main`，起始提交 `e5239c5`（Iter 13 引入；远程仓库待授权创建） |
 
 > 约定：模型与逻辑解耦，模型就绪后只需把 `model.backend` 改为 `openai_compatible`，
 > 无需改业务代码；接入前先跑 `check_model.py` 体检。
@@ -523,6 +524,32 @@
   否则人一旦图省事改写旧内容，历史就静默消失了——而这类损失**事后无法恢复**
   （本项目未启用 git，被覆盖的原文只能靠记忆追回）。
 
+### Iter 13 —— 引入 git 版本控制（从机制上根治"历史丢失"）
+
+- **起因**：Iter 12 暴露的问题是"原文被覆盖后只能靠记忆追回"。**根因是没有版本控制**——
+  日志规范只能约束"日志"，管不住代码与配置的历史。使用方要求建立 GitHub 仓库存储每次内容。
+- **落地（本地部分，已完成）**：
+
+  | 项 | 内容 |
+  | --- | --- |
+  | 仓库根 | `D:\动感地带`（项目根，后续 module1/module3/config.yaml 均在此下） |
+  | 分支 | `main` |
+  | 首次提交 | `e5239c5` —— 39 文件 / 5470 行 |
+  | 新增 | 根目录 `.gitignore`（排除 `__pycache__`/`.idea`/运行时产物/模型权重/未脱敏训练数据） |
+  | 新增 | 根目录 `.gitattributes`（`* text=auto`，统一换行符，避免跨平台"整文件差异"） |
+
+- **效果**：**此后每次改动都有提交，历史不可丢**——代码、配置、日志、数据集的
+  演进过程全部可回溯（`git log` / `git diff`），与 §二 的追加式日志形成双重留痕。
+- **待办（需授权）**：远程 GitHub 仓库尚未创建。本机**无 `gh`、无凭据**
+  （`.git-credentials` 与 `.ssh` 均不存在），但 git 已配置 `credential.helper=manager`
+  （Git Credential Manager），推送时会走浏览器授权，**无需在对话中传递任何密钥**。
+- **提交信息规范（约定）**：采用 Conventional Commits，形如
+  `feat(m2): …` / `fix(m2): …` / `docs(m2): …` / `test(m2): …`；
+  正文说明"改了什么 / 怎么自测的 / 结果如何"，与日志条目对应。
+
+- **经验教训**：**规范要约束"过程"，版本控制要约束"产物"**，两者缺一不可。
+  日志（§二 追加式）解决"为什么这么改"，git 解决"当时到底是什么"。
+
 ---
 
 ## 三、RAG 记忆库实验（快照，最后更新：Iter 11）
@@ -605,15 +632,26 @@
 
 ---
 
-## 六、可复现方式（快照，最后更新：Iter 11）
+## 六、可复现方式（快照，最后更新：Iter 13）
 
 ```bash
 cd module2_user_profile_rag
-python run_self_test.py        # 一键自测（56 用例），结果写入 logs/self_test_report.md
+python run_self_test.py        # 一键自测（62 用例），结果写入 logs/self_test_report.md
 python demo_chat.py            # 多轮对话端到端演示（离线 mock）
 python calibrate_threshold.py  # RAG 检索标定，输出推荐参数并对比过滤模式
 python check_model.py          # 接入 Qwen 后：连通性 / 模型名核对 / 延迟体检
 ```
+
+**版本控制与历史溯源**：
+
+```bash
+git -C .. log --oneline                    # 提交历史
+git -C .. log -p -- module2_user_profile_rag/src/memory_store.py   # 某文件完整演进
+git -C .. show <commit>                    # 某次提交的全部改动
+```
+
+- 仓库根：`D:\动感地带`；分支 `main`；起始提交 `e5239c5`（Iter 13）。
+- **双重留痕**：`git log` 记录"当时到底是什么"，§二 迭代记录说明"为什么这么改"。
 
 常用自测参数：`--list` 列套件、`--suite 记忆` 只跑某套件、`--debug` 看完整堆栈。
 
@@ -665,6 +703,13 @@ python check_model.py          # 接入 Qwen 后：连通性 / 模型名核对 /
 | 16 | 工程侧 | 无日志相关用例 | 新增 `tests/test_log_integrity.py`（6 用例）机械校验上述规范 |
 
 > 登记 V1 与 V2 自身属于"元变更"（改的是留痕机制本身），仍按规范登记，保证闭环。
+
+### V3｜2026-10-07｜§六 增补 git 相关复现说明（Iter 13）
+
+| 序号 | 位置 | 修改前 | 修改后 |
+| --- | --- | --- | --- |
+| 17 | §六 标题与内容 | `## 六、可复现方式`，仅含 4 条脚本命令 | 追加 `（快照，最后更新：Iter 13）`，并增补"版本控制"小节：仓库根、分支、首次提交、`git log` 溯源方式 |
+| 18 | §一 快照表 | 无版本控制项 | 追加"版本控制"一行（git 2.54.0 / 分支 main / 起始提交 e5239c5） |
 
 ---
 
