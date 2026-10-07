@@ -1,0 +1,47 @@
+# ============================================================
+# 项目根目录 .gitignore
+# ============================================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 团队统一配置 ----
+# config.yaml 不含密钥（密钥一律从环境变量读取），建议**提交**以便全队共用同一配置。
+# 若你的部署方式需要把密钥写进该文件，请取消下面这行的注释，并改用 config.example.yaml 分发模板。
+# config.yaml
+
+# ---- 运行时产物（每次运行会重新生成，不入库）----
+data/memory_store.json
+data/test_memory_store.json
+data/demo_memory_store.json
+data/profiles.json
+*.log.tmp
+
+# ---- 模型权重与训练产物（体积大，不入库）----
+models/
+outputs/
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+
+# ---- LoRA 训练数据（可能含真实用户对话，需脱敏后才入库）----
+data/lora/*.jsonl

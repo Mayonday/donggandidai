@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 本地配置（含密钥指向）不入库，只提交 config.example.yaml
+config.yaml
+
+# 运行时产物：记忆库 / 画像 / 向量缓存
+data/memory_store.json
+data/test_memory_store.json
+data/demo_memory_store.json
+data/profiles.json
+
+# LoRA 训练产物
+data/lora/*.jsonl
+outputs/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
