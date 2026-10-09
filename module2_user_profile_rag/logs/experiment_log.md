@@ -687,6 +687,60 @@
   2. **浅拷贝别名是配置系统的经典陷阱**，凡"默认值 + 覆盖合并"的实现，
      都要验证"多次加载互不污染"。
 
+### Iter 17 —— 团队布局联调（同构目录才暴露的两个问题）
+
+- **做法**：把模块整体复制到团队仓库的 `modules/memory/`，**从那里跑一遍自测**，
+  验证"换布局后仍然可用"。
+
+- **问题 1：自测会去真加载模型**
+  `tests/test_pipeline.py` 与 `test_persistence.py` 直接调
+  `CompanionPipeline.from_config()`，**绕过了 `tests/context.py` 里的强制 mock**。
+  在我方仓库布局下（无公共配置）它们走 mock、看不出问题；
+  一旦放进团队布局，就会读到团队 `config.yaml` 的 `model_path` →
+  自动切 `transformers_local` → 未装 torch 直接崩：**2 个套件全部异常**。
+  - 修复：`CompanionPipeline.from_config(..., force_mock=True)`，
+    两处调用点显式传入。理由：**自测是离线用例，不应依赖本地模型**。
+
+- **问题 2：日志进不了版本控制（实锤）**
+  团队根 `.gitignore` 里有一条 `logs/`。该模式**不带前导斜杠**，
+  会在**任意层级**匹配名为 `logs` 的目录——于是 `modules/memory/logs/` 也被连带忽略。
+  `git status --ignored` 实测确认：
+
+  ```
+  !! modules/memory/logs/experiment_log.md
+  !! modules/memory/logs/self_test_report.md
+  ```
+
+  而任务书要求"自测结果、实验调优日志写进 logs 文档"，
+  评审的「平台运行记录」正是看这些——**日志被忽略等于白做**。
+  - 修复（**无需修改团队仓库**）：在本模块自己的 `.gitignore` 内追加否定规则
+    ```gitignore
+    !logs/
+    !logs/**
+    ```
+    实测有效：规则生效前日志显示为被忽略，生效后变为可提交（`??`）。
+  - 备注：原先担心"父目录被排除则子规则无法救回"，实测该场景可行，
+    因为被排除的是 `logs` 目录本身，而模块根 `.gitignore` 位于其上级、可正常读取。
+
+- **修复后结果**：
+
+  | 布局 | 自测结果 | 可入库文件 |
+  | --- | --- | --- |
+  | 本模块仓库 `<repo>/module2_user_profile_rag/` | **70/70** | 40 |
+  | 团队仓库 `<repo>/modules/memory/` | **70/70** | **38（含两个日志文件）** |
+
+  并实测确认团队扁平配置被正确读取：
+  ```
+  公共配置路径: D:\...\digital_human\config.yaml
+  团队 model_path -> ./model/qwen2.5
+  推断后端      -> transformers_local
+  团队 embedding_model -> all-MiniLM-L6-v2
+  ```
+
+- **经验教训**：**要在"目标布局"里跑一遍，而不是在"开发布局"里跑通就算数**。
+  这两个问题在单布局下都不可能暴露——一个因为"没有公共配置所以用 mock"，
+  一个因为"我方仓库没有那条 logs 规则"。
+
 ---
 
 ## 三、RAG 记忆库实验（快照，最后更新：Iter 11）
@@ -771,6 +825,9 @@
         （该分支落后 main **16 个提交**，且缺 `modules/` 目录）；
       - 模块代码落位 `modules/memory/`，按团队 `CHANGELOD.md` 格式（`- 【姓名】描述`）登记；
       - **只读团队 config.yaml，不修改**；本模块已支持其扁平结构。
+      - **日志入库（Iter 17 已解决）**：团队根 `.gitignore` 的 `logs/` 会连带忽略
+        `modules/memory/logs/`；本模块已在自己的 `.gitignore` 内用 `!logs/` + `!logs/**`
+        否定规则救回（实测有效），**无需修改团队任何文件**。
 - [ ] **本地模型端到端实测（阻塞项）**：本机未装 torch/transformers，
       `transformers_local` 后端的**真实加载与推理尚未验证**。需先执行：
       ```bash
@@ -864,6 +921,12 @@ git -C .. show <commit>                    # 某次提交的全部改动
 | 序号 | 位置 | 修改前 | 修改后 |
 | --- | --- | --- | --- |
 | 19 | §一 版本控制行 | `git 2.54.0，分支 main，起始提交 e5239c5（Iter 13 引入；远程仓库待授权创建）` | `git 2.54.0，分支 main，远程 https://github.com/Mayonday/donggandidai （Iter 13 建本地 / Iter 15 发布远程）` |
+
+### V6｜2026-10-07｜§五 补"日志被忽略"待办（Iter 17）
+
+| 序号 | 位置 | 修改前 | 修改后 |
+| --- | --- | --- | --- |
+| 24 | §五 接入团队仓库待办 | 仅"同步分支 / 落位代码 / 按 CHANGELOG 格式登记" | 追加"日志入库：团队根 `.gitignore` 的 `logs/` 会连带忽略 `modules/memory/logs/`，本模块已用 `!logs/` 否定规则救回（Iter 17 实测有效），**无需修改团队文件**" |
 
 ### V5｜2026-10-07｜§一 补团队仓库对接信息（Iter 16）
 

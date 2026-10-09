@@ -36,10 +36,20 @@ class CompanionPipeline:
 
     # ------------------------------------------------------------------
     @classmethod
-    def from_config(cls, module_dir: str | None = None, config_path: str | None = None):
-        """从配置构建整条流水线。"""
+    def from_config(cls, module_dir: str | None = None, config_path: str | None = None,
+                    force_mock: bool = False):
+        """从配置构建整条流水线。
+
+        force_mock=True 时强制使用离线 mock 后端。**自测与离线演示必须用它**：
+        本模块放进团队仓库 `modules/memory/` 后会读到团队 config.yaml（含 `model_path`）
+        并自动切到 `transformers_local`；若不强制 mock，任何未装 torch / 未下权重的
+        环境都跑不了自测——而自测正是"没有模型也能验证逻辑"的保障。
+        真实模型链路由 `check_model.py` 单独验证。
+        """
         module_dir = module_dir or _DEFAULT_MODULE_DIR
         cfg = Config(load_config(module_dir), module_dir)
+        if force_mock:
+            cfg.data["model"]["backend"] = "mock"
 
         llm = LLMClient(cfg.section("model"))
         embedder = build_embedder(cfg.section("embedding"), cfg.section("model"))

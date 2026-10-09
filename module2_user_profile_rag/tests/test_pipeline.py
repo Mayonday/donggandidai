@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """自测：统一对外接口（供成员1集成、成员3评测调用）。"""
 from tests import context
 
@@ -7,7 +7,7 @@ def run():
     from src.pipeline import CompanionPipeline
 
     ctx = context.build()
-    pipe = CompanionPipeline.from_config(module_dir=ctx["module_root"])
+    pipe = CompanionPipeline.from_config(module_dir=ctx["module_root"], force_mock=True)
     pipe.reset()
 
     results = []

@@ -24,8 +24,16 @@ def load_dimensions():
     return data["dimensions"]
 
 
-def build():
-    """构建并返回自测所需组件 dict。"""
+def build(force_mock: bool = True):
+    """构建并返回自测所需组件 dict。
+
+    force_mock=True（默认）：**自测是离线用例，强制使用 mock 后端**。
+    为什么必须这样：本模块放进团队仓库 `modules/memory/` 后，会读到团队的
+    `config.yaml`（含 `model_path`）从而自动切到 `transformers_local`；
+    若不自测时强制 mock，任何未装 torch/未下权重的环境都会跑不了自测——
+    而自测恰恰是"没模型也能验证逻辑"的保障。
+    真实模型链路由 `check_model.py` 单独验证。
+    """
     from src.config_loader import load_config, Config
     from src.llm_client import LLMClient
     from src.embedding import build_embedder
@@ -33,6 +41,8 @@ def build():
     from src.profile_extractor import ProfileExtractor
 
     cfg = Config(load_config(_MODULE_ROOT), _MODULE_ROOT)
+    if force_mock and cfg.section("model").get("backend") != "mock":
+        cfg.data["model"]["backend"] = "mock"
 
     llm = LLMClient(cfg.section("model"))
     embedder = build_embedder(cfg.section("embedding"), cfg.section("model"))

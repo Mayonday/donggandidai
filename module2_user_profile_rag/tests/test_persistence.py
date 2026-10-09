@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """自测：持久化（记忆库 / 画像 / 历史 的保存与恢复）。
 
 这几条代码路径此前**零测试覆盖**（`memory.save/load`、`generator.save_profiles/
@@ -74,7 +74,7 @@ def run():
 
     # ---------- 3. pipeline 整体 save → 新实例 load ----------
     from src.pipeline import CompanionPipeline
-    pipe = CompanionPipeline.from_config(module_dir=root)
+    pipe = CompanionPipeline.from_config(module_dir=root, force_mock=True)
     pipe.reset()
     pipe.memory.persist_path = mem_path
     pipe.generator.profiles_path = prof_path
@@ -82,7 +82,7 @@ def run():
     prof_pw = pipe.get_profile("pw")
     pipe.save()
 
-    pipe2 = CompanionPipeline.from_config(module_dir=root)
+    pipe2 = CompanionPipeline.from_config(module_dir=root, force_mock=True)
     pipe2.memory.persist_path = mem_path
     pipe2.generator.profiles_path = prof_path
     loaded = pipe2.load()
