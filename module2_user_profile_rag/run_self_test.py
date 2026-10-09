@@ -24,10 +24,12 @@ if _HERE not in sys.path:
 from tests import (  # noqa: E402
     test_config, test_profile, test_memory, test_dialogue, test_pipeline,
     test_long_memory, test_anti_hallucination, test_persistence, test_log_integrity,
+    test_team_config,
 )
 
 SUITES = [
     ("配置加载与YAML解析", test_config.run),
+    ("团队仓库适配", test_team_config.run),
     ("用户画像抽取", test_profile.run),
     ("RAG向量记忆库", test_memory.run),
     ("长对话记忆", test_long_memory.run),

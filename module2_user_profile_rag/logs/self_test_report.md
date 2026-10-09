@@ -1,12 +1,12 @@
 # 成员2 模块自测报告（自动生成）
 
-- 生成时间：2026-10-07 20:25:05
+- 生成时间：2026-10-09 10:35:51
 - 解释器：`D:\py\.venv\Scripts\python.exe`
 - Python：3.14.7（Windows 11）
 - 大模型后端：`mock`（mock = 离线自测，不联网）
 - 向量后端：配置 `sentence_transformers` / 实际生效 `hashing`（缺依赖时自动降级）
 - 画像后端：`heuristic`
-- 用例通过：**62/62**（通过率 100.0%）
+- 用例通过：**70/70**（通过率 100.0%）
 
 ## 关键指标
 
@@ -20,7 +20,7 @@
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'temperature', 'max_tokens', 'timeout'] |
+| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'temperature', 'max_tokens', 'timeout', 'model_path', 'backend_explicit', 'device', 'max_new_tokens'] |
 | 配置节[embedding]存在 | ✅ PASS | ['backend', 'fallback_backend', 'model_name', 'dim', 'ngram_min', 'ngram_max', 'function_word_weight'] |
 | 配置节[memory]存在 | ✅ PASS | ['top_k', 'similarity_threshold', 'relative_ratio', 'similarity_threshold_by_backend', 'persist_path', 'max_dialogue_turns', 'summarize_every', 'max_facts'] |
 | 配置节[profile]存在 | ✅ PASS | ['dimensions_path', 'backend', 'min_confidence'] |
@@ -31,6 +31,19 @@
 | 嵌入后端构建成功(含缺依赖降级) | ✅ PASS | 配置=sentence_transformers, 实际生效=hashing |
 | 情感标签集已配置 | ✅ PASS | 开心、平静、焦虑、悲伤、愤怒、孤独、疲惫、未知 |
 | PyYAML 与内置解析器一致性 | ✅ PASS | config.example.yaml 与 profile_dimensions.yaml 均一致 |
+
+### 团队仓库适配
+
+| 用例 | 结果 | 说明 |
+| --- | --- | --- |
+| 团队扁平配置映射（6/6） | ✅ PASS | 全部字段正确映射，后端自动切为 transformers_local |
+| 两种目录布局均能找到公共 config.yaml | ✅ PASS | modules/memory 布局=找到；顶层模块布局=找到 |
+| 无公共配置时安全退回内置默认 | ✅ PASS | backend=mock, top_k=5 |
+| backend_explicit 可强制用 mock（离线自测） | ✅ PASS | backend=mock，model_path 仍保留=True |
+| 团队配置无 model_path 时不误切后端 | ✅ PASS | backend=mock（应保持 mock） |
+| 本地后端：缺模型目录时报错可操作 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 2 个问题： |
+| 本地后端：缺 torch/transformers 时提示安装 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 1 个问题： |
+| 多次加载配置互不污染（DEFAULTS 别名回归） | ✅ PASS | 团队配置=transformers_local, 空环境=mock |
 
 ### 用户画像抽取
 
@@ -50,7 +63,7 @@
 | 检索排序(篮球命中) | ✅ PASS | top1=我特别喜欢打篮球，每周都去球场 score=0.452 |
 | 相似度阈值过滤无关查询 | ✅ PASS | 命中数=0 |
 | 检索结果可格式化注入提示词 | ✅ PASS | - [turn] 我特别喜欢打篮球，每周都去球场 (相关度0.45) |
-| 记录一轮对话返回2条记忆 | ✅ PASS | 565ac204…/f3bc7211… |
+| 记录一轮对话返回2条记忆 | ✅ PASS | f556c91d…/e1133e54… |
 | 记忆持久化与加载(round-trip) | ✅ PASS | 原5条, 载入5条 |
 | 分层压缩tier1(原始轮→事实记忆) | ✅ PASS | 原始轮=3<=上限5, 事实=5, 摘要=8, 总=16 |
 | 分层压缩tier2(事实→摘要) | ✅ PASS | 事实=5<=上限6, 摘要=8 |
@@ -116,8 +129,8 @@
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| Iter 编号连续无跳号/重号（共 13 条） | ✅ PASS | 范围 0~12 |
-| 每条 Iter 均有实质内容（13/13） | ✅ PASS | 均含改动/数据/结论 |
+| Iter 编号连续无跳号/重号（共 17 条） | ✅ PASS | 范围 0~16 |
+| 每条 Iter 均有实质内容（17/17） | ✅ PASS | 均含改动/数据/结论 |
 | 留痕规范章节存在 | ✅ PASS | §〇 留痕规范 |
 | 变更对照表存在 | ✅ PASS | §七 摘要章节变更对照表 |
 | 快照章节均标注更新点（5/5） | ✅ PASS | §一/§三/§四/§五/§六 均已标注（共 5 处） |

@@ -39,13 +39,14 @@
 | --- | --- |
 | 自测解释器 | `D:\py\.venv\Scripts\python.exe`（Python 3.14.7，Windows 11） |
 | 兼容器 | 亦在 `D:\Python314`（3.14.7）与 DSH 内置 Python 3.12.14 上通过，跨版本可复现 |
-| 大模型后端 | `mock`（离线自测；团队已定 Qwen + vLLM，接入方式见 §五） |
+| 大模型后端 | `mock`（离线自测）；团队实际方案为 **`transformers_local` 本地加载 Qwen2.5-1.5B**（Iter 16 修正：此前误判为 vLLM HTTP 服务） |
 | 向量后端 | 配置 `sentence_transformers`；本机未装依赖 → 实际降级 `hashing` |
 | hashing 配置 | 中文字符 1~2-gram + 特征哈希，512 维，**虚词降权 0.15**（Iter 11 引入） |
 | 检索过滤 | 相对下限 `relative_ratio=0.8` + 绝对下限 `0.10`（Iter 11 标定） |
 | 画像后端 | `heuristic`（关键词规则基线） |
 | 测试集 | `data/profile_samples.json`（15 条 / 50 标签）+ `data/memory_eval.json`（30 记忆 / 30 查询） |
 | 版本控制 | git 2.54.0，分支 `main`，远程 https://github.com/Mayonday/donggandidai （Iter 13 建本地 / Iter 15 发布远程） |
+| 团队仓库 | `llb016/digital_human`（owner 林令镔）；成员2 分支 `dev-rag-meomry`，模块落位 `modules/memory/`（Iter 16 起对接，**只读，不推该仓库**） |
 
 > 约定：模型与逻辑解耦，模型就绪后只需把 `model.backend` 改为 `openai_compatible`，
 > 无需改业务代码；接入前先跑 `check_model.py` 体检。
@@ -611,6 +612,81 @@
   每一步都对应到远程的一次提交，符合任务书"开发全程实时更新实验调优日志、
   保证过程完整可追溯"的要求。
 
+### Iter 16 —— 适配团队真实仓库（llb016/digital_human）
+
+- **背景**：发现团队真实项目仓库 `llb016/digital_human`，其技术约定与本模块
+  存在 **6 处不一致**，若不处理，本模块接进去会**静默退回 mock**（读不到团队配置）。
+
+  | 项 | 团队约定 | 本模块原状 |
+  | --- | --- | --- |
+  | 大模型调用 | `model_path: "./model/qwen2.5"` **本地 transformers 加载** | OpenAI 兼容 HTTP API |
+  | 配置结构 | **扁平** key | 嵌套分节 |
+  | 模块位置 | `modules/memory/` | 仓库根下的独立目录 |
+  | 向量嵌入 | `all-MiniLM-L6-v2` | hashing / BGE-zh |
+  | 向量库 | faiss-cpu | 自研 numpy + JSON |
+  | 日志目录 | `logs/`（但被 `.gitignore` 忽略） | 模块内 `logs/` |
+
+  团队实际下载的权重是 **Qwen2.5-1.5B-Instruct**（modelscope，bf16，约 2.9GB），
+  经确认：**没有起 HTTP 服务**，就是在代码里用 transformers 加载。
+
+- **改动 1：新增 `transformers_local` 后端**（`src/llm_client.py`）
+  - 进程内加载：`AutoModelForCausalLM` + `torch_dtype="auto"`（bf16 权重不放大成 fp32）
+    + `device_map="auto"`（有 GPU 用 GPU，无则 CPU）；
+  - 用 `tokenizer.apply_chat_template` 生成输入，**保证与 Qwen 的 ChatML 格式一致**
+    （手拼 `<|im_start|>` 极易出错）；
+  - **懒加载 + 复用**：权重只加载一次；另提供 `warmup()`，供主程序启动时预加载，
+    把加载耗时移出"首次请求延迟"（直接影响「推理性能」评分）；
+  - 只解码新生成 token（切掉输入 prompt），并 `skip_special_tokens=True`。
+
+- **改动 2：配置适配层**（`src/config_loader.py`）
+  - 扁平 → 嵌套映射：`model_path` / `max_new_tokens` / `temperature` /
+    `embedding_model` / `vector_db_path`；
+  - **存在 `model_path` 时自动把 backend 切为 `transformers_local`** ——
+    否则会拿着一个权重目录去请求 HTTP 接口，连不上还看不出原因；
+  - 提供 `backend_explicit: true` 逃逸口（强制 mock 做离线自测）。
+
+- **改动 3：配置查找改为向上逐级**（`find_public_config`）
+  - 原来写死 `../config.yaml`；模块放进 `modules/memory/` 后该路径变成
+    `modules/config.yaml`（不存在）→ **静默退回默认值**；
+  - 改为向上一级级查找（最多 3 层），两种布局都能命中。
+
+- **改动 4：修掉一个潜伏已久的严重 bug（本轮最大收获）**
+  - `_deep_merge` 顶层用 `dict(base)`（**浅拷贝**），导致 `cfg["model"]`
+    与 `DEFAULTS["model"]` **是同一个对象**；任何原地修改都会
+    **永久污染全局默认值**，使后续每次 `load_config` 都串到上一次的值。
+  - 触发场景：适配器往 `cfg["model"]` 写 `model_path` 后，**所有后续加载都被污染**——
+    测试中表现为"空环境下也读出了 transformers_local"。
+  - 影响面：生产同样致命——同一进程内创建两个 `CompanionPipeline` 实例，
+    第二个会拿到第一个的配置；配置热重载也会串值。
+  - 修复：`_deep_merge` 全程 `copy.deepcopy`。
+  - **该缺陷由"多环境隔离"用例暴露**——若只测"单次加载"，它会一直潜伏。
+
+- **改动 5：错误提示改为一次列出全部缺失项**
+  - 原先依赖检查与目录检查串行，只报第一个；改为汇总后一起报
+    （缺目录 + 缺依赖时报"发现 2 个问题"），避免"修一个又撞一个"。
+
+- **新增用例**：「团队仓库适配」套件 **9 个**（扁平映射、双布局查找、默认回退、
+  explicit 逃逸、误判防护、两条后端失败路径、**多次加载互不污染回归**）。
+
+- **结果**：用例 **70/70 = 100%**（10 个套件）。
+
+- **待实测（重要）**：本机 **torch / transformers 未安装**，本地模型加载路径
+  **尚未真机验证**（已验证的是配置适配与失败路径）。需
+  `pip install torch transformers accelerate` 后跑 `python check_model.py` 做端到端确认。
+
+- **给团队的三条提醒（只提醒，不改团队仓库）**：
+  1. **`logs/` 被 `.gitignore` 忽略** —— 任务书要求日志入库供评审（「平台运行记录」10 分），
+     当前所有日志都在仓库外，**评审看不到运行记录**；
+  2. **`CHANGELOD.md` 拼写错误** —— 应为 `CHANGELOG.md`，这是评审会看的变更日志；
+  3. **`all-MiniLM-L6-v2` 是英文模型** —— 本项目是中文情感陪伴对话，
+     建议换 `BAAI/bge-small-zh-v1.5` 等中文嵌入模型，否则中文检索质量明显打折。
+
+- **经验教训**：
+  1. **"能读到配置"不等于"读对了配置"**——schema 不匹配时程序往往不报错，
+     而是静默用默认值继续跑，这类问题必须专门写用例才能发现；
+  2. **浅拷贝别名是配置系统的经典陷阱**，凡"默认值 + 覆盖合并"的实现，
+     都要验证"多次加载互不污染"。
+
 ---
 
 ## 三、RAG 记忆库实验（快照，最后更新：Iter 11）
@@ -673,7 +749,7 @@
 
 ---
 
-## 五、待办与下一步（快照，最后更新：Iter 11）
+## 五、待办与下一步（快照，最后更新：Iter 16）
 
 - [ ] **模型就绪后**：`model.backend` 切 `openai_compatible` 复跑，
       对比 `heuristic` vs `llm` 两种画像后端的准确率（预期 llm 显著更高）。
@@ -690,6 +766,17 @@
 - [ ] 情感标签集对齐：成员1 确认后改 `config.yaml` 的 `emotion.labels` 一处即可全链路生效。
 - [ ] 未闭环的小缺口：④ LoRA 数据构造脚本（`data/lora/` 尚未落地）、
       ⑤ `profile_dimensions.yaml` 中声明的 `free_text` 类型尚无维度使用（规格与实现不一致）。
+- [ ] **接入团队仓库（Iter 16 起）**：
+      - 先同步分支：`git fetch origin && git checkout dev-rag-meomry && git merge origin/main`
+        （该分支落后 main **16 个提交**，且缺 `modules/` 目录）；
+      - 模块代码落位 `modules/memory/`，按团队 `CHANGELOD.md` 格式（`- 【姓名】描述`）登记；
+      - **只读团队 config.yaml，不修改**；本模块已支持其扁平结构。
+- [ ] **本地模型端到端实测（阻塞项）**：本机未装 torch/transformers，
+      `transformers_local` 后端的**真实加载与推理尚未验证**。需先执行：
+      ```bash
+      pip install torch transformers accelerate
+      python check_model.py        # 应打印加载耗时、首字延迟与回复抽样
+      ```
 
 ---
 
@@ -777,6 +864,15 @@ git -C .. show <commit>                    # 某次提交的全部改动
 | 序号 | 位置 | 修改前 | 修改后 |
 | --- | --- | --- | --- |
 | 19 | §一 版本控制行 | `git 2.54.0，分支 main，起始提交 e5239c5（Iter 13 引入；远程仓库待授权创建）` | `git 2.54.0，分支 main，远程 https://github.com/Mayonday/donggandidai （Iter 13 建本地 / Iter 15 发布远程）` |
+
+### V5｜2026-10-07｜§一 补团队仓库对接信息（Iter 16）
+
+| 序号 | 位置 | 修改前 | 修改后 |
+| --- | --- | --- | --- |
+| 20 | §一 表头/新增行 | 无团队仓库相关项 | 新增"团队仓库"行：`llb016/digital_human`、分支 `dev-rag-meomry`、模块落位 `modules/memory/`、权重 `Qwen2.5-1.5B-Instruct` |
+| 21 | §一 大模型后端行 | `mock（离线自测；团队已定 Qwen + vLLM，接入方式见 §五）` | `mock（离线自测）；团队实际方案为 transformers_local 本地加载 Qwen2.5-1.5B`（原 vLLM 判断已被团队实际做法修正） |
+| 22 | §五 待办 | 无 torch/transformers 安装项 | 新增：`pip install torch transformers accelerate` 后跑 `check_model.py` 做本地模型端到端实测 |
+| 23 | §五 待办 | 无团队仓库对接项 | 新增：同步 `dev-rag-meomry`（落后 main 16 提交）、按 `modules/memory/` 落位、按 CHANGELOD.md 格式登记 |
 
 ---
 

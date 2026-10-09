@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
 """团队统一大模型调用封装（成员2视角）。
 
-仅使用标准库 urllib，避免强依赖 requests；接口对齐 OpenAI 兼容协议
-（绝大多数开源大模型 vLLM / Ollama / LMDeploy 均提供该协议）。
+三种后端，按 `config.yaml` 的 `model.backend` 选择：
 
-后端：
-    mock               —— 离线自测用，返回确定性的共情式回复，不联网。
-    openai_compatible  —— 调用真实模型（base_url + api_key + model_name）。
+    transformers_local  —— **团队当前采用的方案**。用 transformers 在进程内加载
+                           本地 Qwen（`model_path: "./model/qwen2.5"`），
+                           无需启动推理服务。首次调用会加载权重，之后复用。
+    openai_compatible   —— 调用 OpenAI 兼容 HTTP 服务（vLLM / Ollama / LMDeploy /
+                           阿里云百炼等），仅用标准库 urllib，无需 requests。
+    mock                —— 离线自测用，返回确定性的共情式回复，不联网、不加载模型。
+
+为什么必须支持 `transformers_local`：
+    团队 `config.yaml` 里写的是 `model_path: "./model/qwen2.5"`，即**本地权重目录**，
+    而不是 API 地址。若只有 HTTP 后端，拿到团队配置后会连不上、静默退回 mock。
 """
 from __future__ import annotations
 
@@ -16,8 +22,11 @@ import re
 import urllib.error
 import urllib.request
 
-# 常见 OpenAI 兼容模型的默认模型名（成员1确认后以 config.yaml 为准）
+# 常见 OpenAI 兼容模型的默认模型名（团队确认后以 config.yaml 为准）
 FALLBACK_MODEL_NAME = "qwen2.5-7b-instruct"
+
+# 本地 transformers 后端的默认权重目录（与团队 config.yaml 的 model_path 一致）
+DEFAULT_LOCAL_MODEL_PATH = "./model/qwen2.5"
 
 
 class LLMClient:
@@ -30,6 +39,16 @@ class LLMClient:
         self.max_tokens = int(model_cfg.get("max_tokens", 512))
         self.timeout = int(model_cfg.get("timeout", 60))
 
+        # ---- 本地 transformers 后端相关 ----
+        self.model_path = model_cfg.get("model_path") or DEFAULT_LOCAL_MODEL_PATH
+        # 团队配置用 max_new_tokens，本模块通用字段是 max_tokens，二者取其一
+        self.max_new_tokens = int(model_cfg.get("max_new_tokens") or self.max_tokens)
+        self.device = model_cfg.get("device", "auto")
+        self._tokenizer = None
+        self._model = None
+        self.loaded = False          # 是否已加载权重（供预热/诊断使用）
+        self.load_seconds = None     # 权重加载耗时，便于性能分析
+
     # ------------------------------------------------------------------
     # 对外主入口
     # ------------------------------------------------------------------
@@ -37,7 +56,102 @@ class LLMClient:
         """给定标准 messages，返回模型的文本回复。"""
         if self.backend == "mock":
             return self._mock_reply(messages)
+        if self.backend == "transformers_local":
+            return self._chat_local(messages, temperature, max_tokens)
         return self._chat_openai_compatible(messages, temperature, max_tokens)
+
+    # ------------------------------------------------------------------
+    # 本地 transformers 后端（团队当前方案：进程内加载 Qwen）
+    # ------------------------------------------------------------------
+    def warmup(self):
+        """预加载权重。建议主程序启动时调用，把加载耗时移出"首次请求延迟"。"""
+        self._ensure_loaded()
+        return self.load_seconds
+
+    def _ensure_loaded(self):
+        """懒加载 tokenizer 与模型（只加载一次，之后复用）。
+
+        启动前**一次性检查全部前置条件**并汇总报错，避免使用者
+        "修一个报错、再撞下一个"。这里刻意不依赖 ImportError.getmessage，
+        因为最需要帮助的场景恰恰是"依赖没装 + 路径也不对"同时发生。
+        """
+        if self._model is not None:
+            return
+        import time
+        t0 = time.time()
+
+        problems = []
+
+        # ① 权重目录（先查，最便宜，也最常见）
+        if not os.path.isdir(self.model_path):
+            problems.append(
+                f"未找到本地模型目录：{self.model_path}\n"
+                "     请先下载权重：\n"
+                "         pip install modelscope\n"
+                "         python -c \"from modelscope import snapshot_download; "
+                "snapshot_download('Qwen/Qwen2.5-1.5B-Instruct', "
+                "local_dir='./model/qwen2.5')\""
+            )
+
+        # ② 运行依赖
+        try:
+            import torch  # noqa: F401
+            from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: F401
+        except ImportError:
+            problems.append(
+                "缺少运行依赖，请安装：\n"
+                "         pip install torch transformers accelerate\n"
+                "     （若只想离线自测，可把配置里的 model.backend 改为 mock）"
+            )
+
+        if problems:
+            raise RuntimeError(
+                "本地模型后端（transformers_local）无法启动，发现 "
+                f"{len(problems)} 个问题：\n"
+                + "\n".join(f"  {i}. {p}" for i, p in enumerate(problems, 1))
+            )
+
+        # 前置条件齐备，正式加载
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self.model_path,
+            torch_dtype="auto",      # 按权重自带精度加载（bf16 权重不会被放大成 fp32）
+            device_map=self.device,  # "auto"：有 GPU 用 GPU，没有则 CPU
+        )
+        self._model.eval()
+        self.loaded = True
+        self.load_seconds = round(time.time() - t0, 2)
+
+    def _chat_local(self, messages, temperature, max_tokens) -> str:
+        self._ensure_loaded()
+        import torch
+
+        temp = self.temperature if temperature is None else float(temperature)
+        n_new = int(max_tokens or self.max_new_tokens)
+
+        # 用模型自带的 chat template，保证与 Qwen 训练时的格式一致
+        # （Qwen 用 ChatML：<|im_start|>role ... <|im_end|>）
+        text = self._tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self._tokenizer([text], return_tensors="pt").to(self._model.device)
+
+        gen_kwargs = dict(
+            max_new_tokens=n_new,
+            pad_token_id=self._tokenizer.eos_token_id,
+        )
+        if temp and temp > 0:
+            gen_kwargs.update(do_sample=True, temperature=temp, top_p=0.9)
+        else:
+            gen_kwargs.update(do_sample=False)
+
+        with torch.no_grad():
+            output_ids = self._model.generate(**inputs, **gen_kwargs)
+
+        # 只取新生成的部分，去掉输入 prompt
+        new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
+        return self._tokenizer.decode(new_ids, skip_special_tokens=True).strip()
 
     # ------------------------------------------------------------------
     # 真实模型调用（OpenAI 兼容 /chat/completions）

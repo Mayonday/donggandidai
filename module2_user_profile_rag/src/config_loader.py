@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import copy
 import os
 
 from . import yaml_light
@@ -87,13 +88,19 @@ DEFAULTS = {
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """递归合并两个字典，override 的值覆盖 base。"""
-    out = dict(base)
+    """递归合并两个字典，override 的值覆盖 base。
+
+    **必须深拷贝**：早先版本只在顶层 `dict(base)`（浅拷贝），导致
+    `cfg["model"]` 与 `DEFAULTS["model"]` 是同一个对象；任何对 cfg 的原地修改
+    都会**永久污染全局默认值**，使后续每次 load_config 都串到上一次的值。
+    （该缺陷由 tests/test_team_config.py 的隔离性用例暴露，见 logs Iter 16）
+    """
+    out = copy.deepcopy(base)
     for k, v in override.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
             out[k] = _deep_merge(out[k], v)
         else:
-            out[k] = v
+            out[k] = copy.deepcopy(v)
     return out
 
 
@@ -108,29 +115,121 @@ def _load_yaml_file(path: str):
         return yaml_light.loads(text)
 
 
-def load_config(module_dir: str | None = None) -> dict:
-    """加载并合并配置，返回顶层 dict（含 model/embedding/memory/profile/persona）。"""
+# ---------------------------------------------------------------------------
+# 团队扁平配置 → 本模块嵌套 schema 的映射
+#
+# 团队 config.yaml 是**扁平结构**（见 llm016/digital_human 仓库）：
+#     model_path: "./model/qwen2.5"
+#     max_new_tokens: 200
+#     temperature: 0.7
+#     emotion_threshold: 0.6
+#     embedding_model: "all-MiniLM-L6-v2"
+#     vector_db_path: "./memory_vector_db"
+#
+# 本模块内部使用嵌套分节（model.* / embedding.* / memory.*）。
+# 若不映射，团队配置会被完整读入却**取不到值**，导致静默退回默认（mock）。
+# 该映射是"只读适配"：不修改团队文件，只在内存里转换。
+# ---------------------------------------------------------------------------
+TEAM_FLAT_KEY_MAP = {
+    "model_path":       ("model", "model_path"),
+    "max_new_tokens":   ("model", "max_new_tokens"),
+    "temperature":      ("model", "temperature"),
+    "embedding_model":  ("embedding", "model_name"),
+    "vector_db_path":   ("memory", "persist_path"),
+}
+
+
+def adapt_team_flat_config(cfg: dict) -> dict:
+    """把团队扁平配置适配进本模块的嵌套 schema（原地修改并返回）。
+
+    注意：`model_path` 存在即说明团队用**本地 transformers 加载**，
+    此时自动把 `model.backend` 切到 `transformers_local`——
+    否则模块会拿着一个权重目录去请求 HTTP 接口，连不上还看不出原因。
+    显式写了 `model.backend` 时以显式值为准。
+    """
+    flat_present = False
+    for flat_key, (section, key) in TEAM_FLAT_KEY_MAP.items():
+        if flat_key in cfg:
+            flat_present = True
+            cfg.setdefault(section, {})[key] = cfg[flat_key]
+
+    if flat_present:
+        model = cfg.setdefault("model", {})
+        # 只有 backend 仍是内置默认值 "mock"（说明没有任何人显式指定过）时才自动推断。
+        # 想强制用 mock 自测时，在配置里写 model.backend_explicit: true 即可。
+        if (not model.get("backend_explicit")
+                and model.get("model_path")
+                and model.get("backend") == "mock"):
+            model["backend"] = "transformers_local"
+        # 团队用 max_new_tokens 表达生成长度，本模块通用字段是 max_tokens。
+        # 注意：本模块默认值里已有 max_tokens(=512)，故不能判断"max_tokens 是否为空"，
+        # 而应以团队的 max_new_tokens 为准（它来自团队配置，语义更明确）。
+        if model.get("max_new_tokens"):
+            model["max_tokens"] = int(model["max_new_tokens"])
+
+        # 团队用 sentence-transformers 的模型名（如 all-MiniLM-L6-v2）：
+        # 只映射模型名，不强行改 backend（本模块默认已是 sentence_transformers，
+        # 且缺依赖会自动降级为 hashing，无需在此干预）。
+        emb = cfg.setdefault("embedding", {})
+        if emb.get("model_name") and emb.get("backend") == "hashing":
+            emb["backend"] = "sentence_transformers"
+
+    return cfg
+
+
+def find_public_config(module_dir: str, max_levels: int = 3):
+    """向上逐级查找团队公共 config.yaml，返回其绝对路径或 None。
+
+    为什么要向上找：本模块可能位于两种位置——
+        <repo>/module2_user_profile_rag/     -> ../config.yaml
+        <repo>/modules/memory/               -> ../../config.yaml
+    只写死 "../config.yaml" 时后者会找不到，从而**静默退回默认配置**。
+    """
+    cur = os.path.abspath(module_dir)
+    for _ in range(max_levels):
+        cur = os.path.dirname(cur)
+        if not cur or cur == os.path.dirname(cur):
+            break
+        candidate = os.path.join(cur, "config.yaml")
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def load_config(module_dir: str | None = None, team_flat: bool = True) -> dict:
+    """加载并合并配置，返回顶层 dict（含 model/embedding/memory/profile/persona）。
+
+    查找顺序（后者覆盖前者）：
+        a. 内置默认值
+        b. 本模块 config.example.yaml
+        c. 团队公共 config.yaml（向上逐级查找，只读）
+        d. 本模块 config.yaml（本地覆盖）
+    """
     if module_dir is None:
         # 默认以本文件所在目录的上一级作为模块根目录（src/ 的上一级）
         module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     cfg = _deep_merge({}, DEFAULTS)
 
-    # c. 默认值已内置；再尝试读 example 文件兜底（保持一致）
+    # b. 示例文件兜底（保持一致）
     example = os.path.join(module_dir, "config.example.yaml")
     if os.path.isfile(example):
         cfg = _deep_merge(cfg, _load_yaml_file(example))
 
-    # b. 团队公共配置（只读，不写）
-    public = os.path.join(module_dir, "..", "config.yaml")
-    public = os.path.abspath(public)
-    if os.path.isfile(public):
+    # c. 团队公共配置（只读，不写；向上逐级查找）
+    public = find_public_config(module_dir)
+    if public:
         cfg = _deep_merge(cfg, _load_yaml_file(public))
+        cfg["_public_config_path"] = public
 
-    # a. 本模块本地覆盖
+    # d. 本模块本地覆盖
     local = os.path.join(module_dir, "config.yaml")
     if os.path.isfile(local):
         cfg = _deep_merge(cfg, _load_yaml_file(local))
+
+    # e. 扁平 → 嵌套适配（团队配置风格）
+    if team_flat:
+        cfg = adapt_team_flat_config(cfg)
 
     return cfg
 
