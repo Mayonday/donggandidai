@@ -60,6 +60,9 @@ def run():
         ("有时候觉得挺孤单的，一个人吃饭一个人回家。", "hobbies", "美食"),
         ("我平时喜欢看科幻电影，周末常去电影院。", "topic_preference", "情感关系"),
         ("一个人吃饭一个人回家", "relationship_status", "单身"),
+        # Iter 21：真实对话中模型把"新媒体运营"说成"IT互联网行业"，
+        # 根因是词典用了裸"运营"（新媒体运营/电商运营并非 IT 岗）
+        ("我是做新媒体运营的，平时喜欢爬山", "occupation", "IT互联网"),
     ]
     bad_fp = []
     for text, dim, forbidden in fp_cases:
