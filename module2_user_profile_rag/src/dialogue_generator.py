@@ -46,6 +46,17 @@ class DialogueGenerator:
         self.profiles: dict[str, dict] = {}          # user_id -> {dim_id: {value, confidence}}
         self.history: dict[str, list[dict]] = {}     # user_id -> [{"role":..., "content":...}]
         self.profiles_path = config.resolve("data/profiles.json")
+
+        # 单轮回复的生成长度上限（Iter 22）。
+        # 为什么单独设：实测（logs Iter 22）**生成长度是延迟的主导因素**——
+        # 生成 4.3~5.5 tok/s，而预填充仅约 2 秒；一次 99 token 的回复要 18 秒。
+        # 陪伴对话本就要求"1~3 句"，故默认收紧到 80，同时**不超过团队 config.yaml
+        # 里 max_new_tokens 给的模型级上限**（不越权改团队配置，只在调用处收紧）。
+        self.model_cfg = config.section("model")
+        model_limit = int(self.model_cfg.get("max_new_tokens")
+                          or self.model_cfg.get("max_tokens") or 200)
+        reply_cap = int(self.persona_cfg.get("max_reply_tokens") or 80)
+        self.max_reply_tokens = min(reply_cap, model_limit)
         # 防瞎编校验器（实体级拦截 + 句级观测），配置见 persona.hallucination_check
         self.checker = FactConsistencyChecker(self.persona_cfg.get("hallucination_check"))
 
@@ -111,8 +122,8 @@ class DialogueGenerator:
             {"role": "user", "content": user_input}
         ]
 
-        # 5) 生成
-        raw = self.llm.chat(messages)
+        # 5) 生成（显式传入本模块的回复长度上限，见 __init__ 的 max_reply_tokens）
+        raw = self.llm.chat(messages, max_tokens=self.max_reply_tokens)
         response = self._postprocess(raw)
 
         # 5.5) 事实一致性校验（防瞎编第一道防线，见 src/anti_hallucination.py）

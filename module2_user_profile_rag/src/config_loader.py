@@ -78,6 +78,13 @@ DEFAULTS = {
         "language": "zh",
         "max_history_turns": 8,
         "anti_hallucination": True,      # 提示词层面的护栏（软约束）
+        # 单轮回复生成长度上限（**安全网，不是主要手段**）。
+        # 实测（logs Iter 22）：生成长度是延迟主导因素（4.3~5.5 tok/s，预填充仅约 2s）。
+        # 但设 80 会把较长的回复**截断在半句话上**（实测 99 tok 的回复被切），
+        # 故取 120：既能兜住"模型跑飞"的极端情况，又不会截断正常回复。
+        # 真正让回复变短靠提示词里的字数约束（见 persona_prompts 的护栏第 3 条）。
+        # 实际生效值取 min(本值, 团队 config.yaml 的 max_new_tokens)，不越权覆盖团队配置。
+        "max_reply_tokens": 120,
         # 程序层面的防瞎编校验（硬约束），见 src/anti_hallucination.py
         "hallucination_check": {
             "mode": "enforce",           # off | warn | enforce
@@ -154,6 +161,7 @@ TEAM_FLAT_KEY_MAP = {
     # 否则扁平值会在合并阶段把整个 dict 覆盖成标量。故用 default_persona 而非 persona。
     "default_persona":      ("persona", "default_persona"),
     "anti_hallucination":   ("persona", "anti_hallucination"),
+    "max_reply_tokens":     ("persona", "max_reply_tokens"),   # 单轮回复生成长度上限
     "profile_backend":      ("profile", "backend"),
     "profile_dimensions_path": ("profile", "dimensions_path"),
     "emotion_labels":       ("emotion", "labels"),         # 成员1 的标签集（仅观测）
