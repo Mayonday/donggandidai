@@ -14,6 +14,13 @@ data/test_memory_store.json
 data/demo_memory_store.json
 data/profiles.json
 
+# 团队 config.yaml 里 vector_db_path: "./memory_vector_db" 指向的持久化文件。
+# 它由 chat.py / check_model.py 退出时落盘生成，**属于运行时产物，不应提交**。
+# 注意路径由配置决定，故这里把常见形态都覆盖（文件或目录）。
+memory_vector_db
+memory_vector_db/
+modules/memory_vector_db
+
 # LoRA 训练产物
 data/lora/*.jsonl
 outputs/
