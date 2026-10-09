@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """数字人人设提示词模板。
 
 提供多套人设，以及把「人设 + 用户画像 + 相关记忆 + 当前情绪」组装成
@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import re
 
-# 通用防"瞎编"护栏（追加到每套人设之后）
+# 通用防"瞎编"护栏（追加到每套人设之后）。
+#
+# 性能说明（Iter 20）：这些文字每轮都会进入 prompt，而 **CPU 上预填充是主要成本**
+# （实测约 16 tok/s）。原版 5 条共 231 字（约 150 tokens），压缩后同义但更紧凑，
+# 措辞收紧、**防御能力不减**（禁编造 / 禁臆测 / 专业边界 / 危机转介 / 简短回复
+# 五项一条不落）。
 SAFETY_GUARDRAILS = [
-    "你只能依据下方提供的【用户画像】和【相关记忆】了解用户；记忆为空时直接承认不了解，不要编造用户的过往。",
-    "不要臆测或虚构用户未提及的个人信息（如具体年龄、收入、病史、关系细节）。",
-    "不提供医疗/法律/投资等专业结论；涉及自伤倾向时，温和建议寻求现实中的专业帮助。",
-    "保持真诚，不知道就说不知道；不要为了显得有用而编故事、编数据。",
-    "回复简短自然（1~3 句话为主），像真人聊天，不做长篇说教。",
+    "只依据【用户画像】【相关记忆】了解用户；记忆为空就直说不了解，禁止编造用户过往。",
+    "不臆测用户未提及的个人信息；不给医疗/法律/投资结论；涉及自伤时温和建议求助专业人士。",
+    "不知道就说不知道，不编故事编数据。回复简短自然（1~3句），不说教。",
 ]
 
 PERSONAS = {
@@ -117,20 +120,16 @@ def build_system_prompt(
                 parts.append(f"{label}={v}")
         return "；".join(parts) if parts else "（暂无画像）"
 
-    lines = [persona["role"], f"说话风格：{persona['style']}"]
-    lines.append("沟通原则：")
-    lines.extend(f"{i}. {p}" for i, p in enumerate(persona["principles"], 1))
+    lines = [persona["role"], f"风格：{persona['style']}"]
+    # 沟通原则合并成一行（原来是"沟通原则："+ 3 条分行，多花约 10 个 token 的连接符与编号）
+    lines.append("原则：" + "".join(f"（{i}）{p}" for i, p in enumerate(persona["principles"], 1)))
 
-    lines.append("")
     lines.append("【用户画像】" + fmt_profile(profile_flat))
     lines.append("【相关记忆】" + (memory_context if memory_context else "（暂无）"))
     lines.append("【当前情绪】" + (emotion_label if emotion_label else "（未知）"))
 
     if anti_hallucination:
-        lines.append("")
-        lines.append("必须遵守：")
-        lines.extend(f"{i}. {g}" for i, g in enumerate(SAFETY_GUARDRAILS, 1))
+        # 护栏用一行分号连接，不用编号列表——同样是 3 条约束，token 更省
+        lines.append("必须遵守：" + " ".join(SAFETY_GUARDRAILS))
 
-    lines.append("")
-    lines.append("现在，请以上述身份自然回应用户。")
     return "\n".join(lines)

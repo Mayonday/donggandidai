@@ -1,122 +1,79 @@
 # ============================================================
-# 本模块配置示例（config.example.yaml）
+# 统一配置文件（扁平格式 —— 与团队 config.yaml 完全同构）
 #
-# 【与团队仓库的关系】——重要
-#   团队仓库（llb016/digital_human）的 config.yaml 是**扁平结构**：
-#       model_path: "./model/qwen2.5"
-#       max_new_tokens: 200
-#       temperature: 0.7
-#       emotion_threshold: 0.6
-#       embedding_model: "all-MiniLM-L6-v2"
-#       vector_db_path: "./memory_vector_db"
-#   本模块会自动读取并适配它（**只读，绝不改动团队文件**）：
-#       model_path      -> model.model_path，且自动把 backend 切为 transformers_local
-#       max_new_tokens  -> model.max_tokens
-#       temperature     -> model.temperature
-#       embedding_model -> embedding.model_name
-#       vector_db_path  -> memory.persist_path
-#   查找方式：从模块目录**向上逐级**找 config.yaml，因此
-#   <repo>/module2_user_profile_rag/ 与 <repo>/modules/memory/ 两种布局都能命中。
+# 【Iter 20 决策：配置格式统一以团队为准】
+#   团队 config.yaml 使用扁平 key，这是全队唯一对外的配置格式。
+#   本模块内部虽用嵌套分节组织，但那只是实现细节，**不要求团队接受**。
+#   因此本文件每一项都是扁平键，团队原有 5 个键原样保留、含义不变。
 #
-# 【本文件的作用】仅作本模块默认值与本地开发示例，不要修改团队公共 config.yaml。
+#   本模块会「向上逐级」查找 config.yaml 并**只读**适配，因此
+#   <repo>/module2_user_profile_rag/ 与 <repo>/modules/memory/ 两种布局都能命中；
+#   团队文件**不会被本模块修改**。
+#
+#   注意：扁平键名不得与内部节名同名（model/embedding/memory/profile/persona/emotion），
+#   否则会覆盖整个分节。例如指定人设请写 default_persona，不要写 persona。
 # ============================================================
 
-# ---- 团队统一大模型：Qwen ----
-# backend 三选一：
-#   transformers_local —— 团队方案：进程内加载本地权重（存在 model_path 时自动推断）
-#   openai_compatible  —— 调用 vLLM / Ollama / 百炼 等 HTTP 服务
-#   mock               —— 离线自测：不联网、不加载模型
-model:
-  backend: mock                 # 本地自测用；接入团队配置后自动变 transformers_local
-  model_path: "./model/qwen2.5" # 本地权重目录（transformers_local 用）
-  backend_explicit: false       # 置 true 可强制使用上面的 backend，不被 model_path 推断覆盖
-  base_url: "http://127.0.0.1:8000/v1"   # openai_compatible 用
-  api_key_env: "OPENAI_API_KEY"
-  model_name: "Qwen/Qwen2.5-7B-Instruct"
-  device: auto                  # transformers_local 用：auto / cpu / cuda
-  # 权重精度。auto = 智能选择：**CPU 上自动用 float32**，有 GPU 时才交给
-  # transformers 按权重自适应。原因见 logs Iter 18 实测：
-  #   本机（Intel Core Ultra 7 155H，无 AVX512-BF16）bf16 是软件模拟，
-  #   同一 prompt 同一输出—— bf16: 22.5s(1.29 tok/s)  vs  fp32: 8.0s(3.63 tok/s)
-  #   真实多轮链路：31/33/42s  ->  14.6/9.4/10.4s（快 2.5~3 倍）
-  # 可选值：auto | float32 | bfloat16 | float16
-  dtype: auto
-  max_new_tokens: 200           # 与团队字段同名（会同步到 max_tokens）
-  max_tokens: 200
-  temperature: 0.7
-  timeout: 60
+# ------------------------------------------------------------
+# 一、大模型（团队原有键：model_path / max_new_tokens / temperature）
+# ------------------------------------------------------------
+# 团队真实 config.yaml 里由队长设置为本地权重目录（如 "./model/qwen2.5"）。
+# 本文件作为**模板**默认注释掉：置空/注释即退回可离线运行的 mock 后端，
+# 这样在没下载权重的机器上也能跑自测与 --mock 交互。
+# 一旦启用（存在该键），模块会自动切换到 transformers_local 后端。
+# model_path: "./model/qwen2.5"
+max_new_tokens: 200              # 生成长度上限（对话场景 60~80 通常够用，调小可提速）
+temperature: 0.7                 # 情感陪伴建议 0.7~0.9，过低会显得生硬
 
-# 说明：若改用 HTTP 服务（vLLM 等），需把 backend_explicit 置 true 并设
-# backend: openai_compatible，同时保证 model_name 与服务端 /v1/models 一致。
-# 可用 python check_model.py 自动核对。
+# 本模块补充项
+device: auto                     # auto / cpu / cuda
+dtype: auto                      # auto / float32 / bfloat16
+                                 #   auto = CPU 用 float32、有 GPU 才按权重精度。
+                                 #   原因：本机 CPU 无 AVX512-BF16，bf16 是软件模拟，
+                                 #   实测同 prompt 同输出 bf16 22.5s vs fp32 8.0s（慢 2.8 倍）
 
-# ---- 向量嵌入 ----
-# 团队选定首选 sentence_transformers（中文检索质量更高）。
-# 若目标环境未安装该依赖，embedding 会自动降级到 fallback_backend 并打印警告，
-# 保证程序在任何环境下都能跑起来。启用方式：pip install sentence-transformers
-embedding:
-  backend: sentence_transformers         # sentence_transformers | hashing | api
-  fallback_backend: hashing              # 首选不可用时的降级后端
-  model_name: "BAAI/bge-small-zh-v1.5"   # sentence-transformers / 远程嵌入用
-  dim: 512                     # hashing 固定向量维度
-  ngram_min: 1                 # 中文字符 n-gram 下界
-  ngram_max: 2                 # n-gram 上界（实测 1-2 优于 1-3，见 calibrate_threshold.py --sweep）
-  # 虚词降权：只由"你我/的什/什么/吗"等虚词构成的 n-gram 几乎无检索信息，
-  # 却会在任意两句中文里共现造成虚假相似度。实测将无关回声的得分从 0.311 压到 0.115，
-  # 使正确记忆（0.221）排序反超。1.0 = 不降权，0 = 完全忽略。
-  function_word_weight: 0.15
+# ------------------------------------------------------------
+# 二、情感识别（成员1 模块）
+# ------------------------------------------------------------
+emotion_threshold: 0.6           # 团队原有键：成员1 的判定阈值（本模块不消费，仅保留兼容）
 
-# ---- 情感标签集（与成员1 情感识别模块对齐）----
-# 成员1 确认标签体系后，只需修改此处 labels，即可全链路生效
-# （用于校验传入的 emotion_label 并注入【当前情绪】段落）。
-emotion:
-  labels: [开心, 平静, 焦虑, 悲伤, 愤怒, 孤独, 疲惫, 未知]
-  unknown_label: 未知
+# 成员1 的标签集。本模块**仅用于观测**：实际收到的标签若不在此列，会记录到
+# unseen_labels 供核对口径，但**绝不拦截、不拒绝**（逐轮情绪一律以成员1 传入为准）。
+emotion_labels: [开心, 平静, 焦虑, 悲伤, 愤怒, 孤独, 疲惫, 未知]
 
-# ---- RAG 向量记忆库 ----
-memory:
-  top_k: 5
-  # 绝对下限：仅筛除"完全无关"的记忆。
-  similarity_threshold: 0.10
-  # 相对下限：只保留与最佳命中同一量级的记忆（0 = 关闭，退回纯绝对阈值）。
-  # 为什么需要它：同一目标记忆的相似度会随**提问措辞**剧烈波动（实测同一只猫：
-  # '猫'=0.218、'猫怎么样'=0.082、'我养的那只猫最近怎么样'=0.238，相差 3 倍），
-  # 但排序始终稳定。故在漂移量上画固定绝对线必然时松时紧。
-  # 实测（30 条标注查询）：绝对模式最优 F1 0.760 / Recall 0.633；
-  #                        相对模式最优 F1 0.828 / Recall 0.800  <- 采用
-  relative_ratio: 0.8
-  # 按实际生效的嵌入后端分别标定绝对下限，避免"首选 ST 缺依赖降级为 hashing"后失配。
-  #   hashing: 0.10              <- 已实测
-  #   sentence_transformers: ??? <- 必须在本机装好 ST 后跑 calibrate_threshold.py 标定
-  similarity_threshold_by_backend:
-    hashing: 0.10
-  persist_path: "data/memory_store.json"
-  max_dialogue_turns: 200      # 原始对话轮上限，超出后压缩为"事实记忆"
-  summarize_every: 20          # 每次压缩处理的批大小
-  max_facts: 60                # 事实记忆条数上限，超出后合并为摘要记忆
+# ------------------------------------------------------------
+# 三、向量与记忆（团队原有键：embedding_model / vector_db_path）
+# ------------------------------------------------------------
+embedding_model: "all-MiniLM-L6-v2"   # 团队选定，保持不变
+vector_db_path: "./memory_vector_db"  # 团队原有键；本模块用作记忆库持久化路径
 
-# ---- 用户画像抽取 ----
-profile:
-  dimensions_path: "profiles/profile_dimensions.yaml"
-  backend: heuristic           # heuristic | llm
-  min_confidence: 0.5          # 置信度低于此值的维度按"未知"处理
+# 本模块补充项
+embedding_backend: sentence_transformers  # sentence_transformers / hashing / api
+                                          # 缺依赖时自动降级 hashing 并告警一次
+ngram_min: 1                     # 哈希嵌入 n-gram 下界（降级时生效）
+ngram_max: 2                     # 上界；实测 1-2 优于 1-3
+function_word_weight: 0.15       # 纯虚词 n-gram 降权：抑制"你我/的什/什么/吗"造成的虚假相似度
+memory_top_k: 5                  # 每轮召回记忆条数
+similarity_threshold: 0.10       # 绝对下限：仅筛除"完全无关"
+relative_ratio: 0.8              # 相对下限：只保留与最佳命中同量级的（0 = 关闭）
+                                 # 绝对+相对双下限实测 Recall 0.800 / F1 0.828（纯绝对为 0.667/0.667）
+max_dialogue_turns: 200          # 原始对话轮上限，超出后压缩为"事实记忆"
+max_facts: 60                    # 事实记忆条数上限，超出后合并为摘要
 
-# ---- 人设与对话生成 ----
-persona:
-  default_persona: "温暖倾听者"
-  language: "zh"
-  max_history_turns: 8         # 带入上下文的最近对话轮数
+# ------------------------------------------------------------
+# 四、人设与对话生成
+# ------------------------------------------------------------
+default_persona: 温暖倾听者        # 温暖倾听者 / 理性朋友 / 元气鼓励师 / 治愈系陪伴
+anti_hallucination: true          # 提示词层面的护栏（软约束）
+                                  # 程序层面的硬约束见 src/anti_hallucination.py
+                                  # （实体级拦截 + 句级观测，默认 enforce）
 
-  # 防瞎编：软约束（提示词护栏）+ 硬约束（程序校验）双管齐下
-  anti_hallucination: true     # 软约束：往提示词里注入"禁止编造"条款
-
-  # 硬约束：校验回复中关于用户的事实是否有依据（详见 src/anti_hallucination.py）
-  #   mode: off 关闭 / warn 只标注 / enforce 拦截（默认）
-  #   enforce_entities: 仅对"实体级"高精度信号拦截（如"你的猫""你老婆"）
-  #   report_sentences: "句级"低精度信号仅记录不拦截（避免误杀正常转述）
-  hallucination_check:
-    mode: enforce
-    enforce_entities: true
-    report_sentences: true
-    min_overlap: 0.30          # 句级判定的 2-gram 重合率阈值（仅影响记录）
-    min_claim_len: 5           # 过短的断言不做判定，避免误伤
+# ------------------------------------------------------------
+# 五、用户画像
+# ------------------------------------------------------------
+profile_backend: heuristic        # heuristic（离线规则）/ llm（调用大模型，更准）
+profile_dimensions_path: "profiles/profile_dimensions.yaml"
+                                  # 17 维 / 6 大类；**只此一处定义**。成员3 评测请直接读它，
+                                  # 保证评测口径与实现同源。
+                                  # 其中"当前情绪"维度**已移除**：逐轮情绪以成员1 为准，
+                                  # 本模块不再重复判断（避免同一 prompt 出现两个情绪标签）。

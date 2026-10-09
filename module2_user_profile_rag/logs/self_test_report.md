@@ -1,12 +1,12 @@
 # 成员2 模块自测报告（自动生成）
 
-- 生成时间：2026-10-09 19:14:12
+- 生成时间：2026-10-09 19:45:52
 - 解释器：`D:\py\.venv\Scripts\python.exe`
 - Python：3.14.7（Windows 11）
 - 大模型后端：`mock`（mock = 离线自测，不联网）
 - 向量后端：配置 `sentence_transformers` / 实际生效 `hashing`（缺依赖时自动降级）
 - 画像后端：`heuristic`
-- 用例通过：**72/72**（通过率 100.0%）
+- 用例通过：**75/75**（通过率 100.0%）
 
 ## 关键指标
 
@@ -20,12 +20,12 @@
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'device', 'dtype', 'temperature', 'max_tokens', 'timeout', 'model_path', 'backend_explicit', 'max_new_tokens'] |
+| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'device', 'dtype', 'temperature', 'max_tokens', 'timeout', 'max_new_tokens'] |
 | 配置节[embedding]存在 | ✅ PASS | ['backend', 'fallback_backend', 'model_name', 'dim', 'ngram_min', 'ngram_max', 'function_word_weight'] |
 | 配置节[memory]存在 | ✅ PASS | ['top_k', 'similarity_threshold', 'relative_ratio', 'similarity_threshold_by_backend', 'persist_path', 'max_dialogue_turns', 'summarize_every', 'max_facts'] |
 | 配置节[profile]存在 | ✅ PASS | ['dimensions_path', 'backend', 'min_confidence'] |
 | 配置节[persona]存在 | ✅ PASS | ['default_persona', 'language', 'max_history_turns', 'anti_hallucination', 'hallucination_check'] |
-| 画像维度清单解析 | ✅ PASS | 共 18 个维度 |
+| 画像维度清单解析 | ✅ PASS | 共 17 个维度 |
 | 枚举维度均含兜底选项'未知' | ✅ PASS | 通过 |
 | 相对路径解析为模块根目录下绝对路径 | ✅ PASS | D:\动感地带\module2_user_profile_rag\profiles/profile_dimensions.yaml |
 | 嵌入后端构建成功(含缺依赖降级) | ✅ PASS | 配置=sentence_transformers, 实际生效=hashing |
@@ -44,16 +44,18 @@
 | 本地后端：缺模型目录时报错可操作 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 1 个问题： |
 | 本地后端：缺 torch/transformers 时提示安装 | ✅ PASS | 本机已装 transformers，跳过该分支 |
 | 多次加载配置互不污染（DEFAULTS 别名回归） | ✅ PASS | 团队配置=transformers_local, 空环境=mock |
+| 统一扁平格式：本模块可调项映射（5/5） | ✅ PASS | 全部用扁平键设置成功，与团队同格式 |
+| 配置键名冲突给出可操作报错 | ✅ PASS | 配置键名与内部节名冲突：['persona']。请改用不带歧义的扁平键名（例如指定人设请写 defaul |
 
 ### 用户画像抽取
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| 启发式画像抽取准确率(50/50) | ✅ PASS | accuracy=1.0000 |
+| 启发式画像抽取准确率(40/40) | ✅ PASS | accuracy=1.0000 |
 | 错误案例明细 | ✅ PASS | 无错误案例 |
 | 否定结构鲁棒性(7/7) | ✅ PASS | 全部通过 |
 | 误报回归(3/3) | ✅ PASS | 全部通过 |
-| 返回全部画像维度 | ✅ PASS | 返回 18 个维度 |
+| 返回全部画像维度 | ✅ PASS | 返回 17 个维度 |
 
 ### RAG向量记忆库
 
@@ -63,7 +65,7 @@
 | 检索排序(篮球命中) | ✅ PASS | top1=我特别喜欢打篮球，每周都去球场 score=0.452 |
 | 相似度阈值过滤无关查询 | ✅ PASS | 命中数=0 |
 | 检索结果可格式化注入提示词 | ✅ PASS | - [turn] 我特别喜欢打篮球，每周都去球场 (相关度0.45) |
-| 记录一轮对话返回2条记忆 | ✅ PASS | 6c2fc398…/232b5763… |
+| 记录一轮对话返回2条记忆 | ✅ PASS | f0dee2f9…/30f4c10e… |
 | 记忆持久化与加载(round-trip) | ✅ PASS | 原5条, 载入5条 |
 | 分层压缩tier1(原始轮→事实记忆) | ✅ PASS | 原始轮=3<=上限5, 事实=5, 摘要=8, 总=16 |
 | 分层压缩tier2(事实→摘要) | ✅ PASS | 事实=5<=上限6, 摘要=8 |
@@ -84,7 +86,7 @@
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
 | 记忆库 round-trip（含检索能力保持） | ✅ PASS | 原2条→载入2条, 检索 top1 一致=True |
-| 画像与历史 round-trip | ✅ PASS | 画像18项一致=True, 历史2→2条 |
+| 画像与历史 round-trip | ✅ PASS | 画像17项一致=True, 历史2→2条 |
 | pipeline.save → 新实例 load 后可继续检索 | ✅ PASS | memory=True, profiles=True, 画像一致=True |
 | 文件不存在时 load 返回 False 不抛异常 | ✅ PASS | memory.load=False, profiles.load=False |
 | 落盘 JSON 结构完整 | ✅ PASS | items=2, 字段=['embedding', 'id', 'metadata', 'text'] |
@@ -96,7 +98,8 @@
 | 对话生成返回非空回复 | ✅ PASS | 小暖：我在听，先陪着你。你说到「最近工作好累啊，感觉快撑不住了」，可以多和我讲讲 |
 | 系统提示词注入人设角色 | ✅ PASS | 含「小暖」与温暖人设 |
 | 提示词含画像/记忆/情绪三段上下文 | ✅ PASS | 【用户画像】【相关记忆】【当前情绪】 |
-| 防瞎编护栏已注入 | ✅ PASS | 含禁止臆测/编造条款 |
+| 防瞎编护栏已注入(3/3) | ✅ PASS | 全部护栏条款均已注入 |
+| 提示词长度受控(<=420字) | ✅ PASS | 当前 330 字（精简前 440 字） |
 | RAG长对话记忆(跨轮检索命中) | ✅ PASS | 检索到 2 条, 命中=True |
 | 画像跨轮累积(gender=男) | ✅ PASS | gender=男 |
 | 多轮对话历史维护 | ✅ PASS | u1历史条数=2 |
@@ -123,7 +126,7 @@
 | pipeline.chat 返回回复 | ✅ PASS | 小暖：我在听，先陪着你。你说到「今天被领导骂了，好难受」，可以多和我讲讲 |
 | pipeline.extract_profile 可用 | ✅ PASS | gender=女, location=一线城市 |
 | pipeline.retrieve 跨轮检索 | ✅ PASS | 命中 1 条 |
-| pipeline.reset 清空指定用户 | ✅ PASS | 重置前 18 项, 重置后 0 项 |
+| pipeline.reset 清空指定用户 | ✅ PASS | 重置前 17 项, 重置后 0 项 |
 | 人设角色名解析 | ✅ PASS | {'温暖倾听者': '小暖', '理性朋友': '小知', '元气鼓励师': '小阳', '治愈系陪伴': '阿树'} |
 | 交互式入口 chat.py 冒烟测试 | ✅ PASS | /profile /memory /exit 命令均正常 |
 
@@ -131,8 +134,8 @@
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| Iter 编号连续无跳号/重号（共 19 条） | ✅ PASS | 范围 0~18 |
-| 每条 Iter 均有实质内容（19/19） | ✅ PASS | 均含改动/数据/结论 |
+| Iter 编号连续无跳号/重号（共 21 条） | ✅ PASS | 范围 0~20 |
+| 每条 Iter 均有实质内容（21/21） | ✅ PASS | 均含改动/数据/结论 |
 | 留痕规范章节存在 | ✅ PASS | §〇 留痕规范 |
 | 变更对照表存在 | ✅ PASS | §七 摘要章节变更对照表 |
 | 快照章节均标注更新点（5/5） | ✅ PASS | §一/§三/§四/§五/§六 均已标注（共 5 处） |

@@ -38,6 +38,17 @@ embedding_model: "all-MiniLM-L6-v2"
 vector_db_path: "./memory_vector_db"
 """
 
+# 统一格式（Iter 20）：本模块的可调项也一律用**扁平键**，避免出现两套配置格式
+TEAM_CONFIG_EXTENDED = TEAM_CONFIG + """\
+
+# 本模块补充项（同样使用扁平键）
+default_persona: 理性朋友
+similarity_threshold: 0.12
+relative_ratio: 0.75
+memory_top_k: 4
+emotion_labels: [开心, 悲伤, 烦躁]
+"""
+
 
 def _build_layout(tmp, module_rel, cfg_text=TEAM_CONFIG):
     """在 tmp 下造出 <repo>/<module_rel>/ 布局，并在 repo 根放 config.yaml。"""
@@ -177,6 +188,40 @@ def run():
             "info": f"团队配置={cfgA.get('model', {}).get('backend')}, "
                     f"空环境={cfgB.get('model', {}).get('backend')}",
         })
+
+        # ---------- 10. 统一格式：本模块可调项也用扁平键（Iter 20）----------
+        _repo5, module5 = _build_layout(os.path.join(tmp, "t5"), "modules/memory",
+                                        TEAM_CONFIG_EXTENDED)
+        cfg5 = load_config(module5)
+        ext_checks = {
+            "default_persona -> persona.default_persona":
+                (cfg5.get("persona", {}).get("default_persona"), "理性朋友"),
+            "similarity_threshold -> memory.similarity_threshold":
+                (cfg5.get("memory", {}).get("similarity_threshold"), 0.12),
+            "relative_ratio -> memory.relative_ratio":
+                (cfg5.get("memory", {}).get("relative_ratio"), 0.75),
+            "memory_top_k -> memory.top_k": (cfg5.get("memory", {}).get("top_k"), 4),
+            "emotion_labels -> emotion.labels":
+                (cfg5.get("emotion", {}).get("labels"), ["开心", "悲伤", "烦躁"]),
+        }
+        bad5 = [f"{k}: 期望 {v[1]!r}, 实际 {v[0]!r}" for k, v in ext_checks.items() if v[0] != v[1]]
+        results.append({
+            "name": f"统一扁平格式：本模块可调项映射（{len(ext_checks) - len(bad5)}/{len(ext_checks)}）",
+            "ok": not bad5,
+            "info": "；".join(bad5) if bad5 else "全部用扁平键设置成功，与团队同格式",
+        })
+
+        # ---------- 11. 键名冲突防护（persona 之类会覆盖整个分节）----------
+        _repo6, module6 = _build_layout(os.path.join(tmp, "t6"), "modules/memory",
+                                        TEAM_CONFIG + '\npersona: 理性朋友\n')
+        try:
+            load_config(module6)
+            ok11, info11 = False, "应当报错但没有"
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            ok11 = "冲突" in msg and "default_persona" in msg
+            info11 = msg.splitlines()[0][:52]
+        results.append({"name": "配置键名冲突给出可操作报错", "ok": ok11, "info": info11})
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -27,7 +27,7 @@ module2_user_profile_rag/
 ├── check_model.py               # ★ Qwen 接入体检（连通性/延迟/标记泄漏）
 ├── calibrate_threshold.py       # ★ RAG 检索标定（阈值/过滤/n-gram 扫描，含推荐配置）
 ├── profiles/
-│   └── profile_dimensions.yaml  # ★ 画像维度清单（18 维，单一事实来源）
+│   └── profile_dimensions.yaml  # ★ 画像维度清单（17 维，单一事实来源）
 ├── data/
 │   ├── profile_samples.json     # 画像标注样本（15 条 / 50 个维度标签）
 │   ├── memory_eval.json         # ★ RAG 检索标注集（30 记忆 + 30 查询）
@@ -61,7 +61,7 @@ cd module2_user_profile_rag
 pip install -r requirements.txt          # 最少只需 numpy（即可离线跑通）
 pip install sentence-transformers        # 推荐：启用高质量中文向量嵌入
 
-python run_self_test.py                  # 一键自测（72 个用例，约 7 秒）
+python run_self_test.py                  # 一键自测（75 个用例，约 7 秒）
 python chat.py                           # ★ 人工输入文本，和数字人对话
 python demo_chat.py                      # 多轮对话演示（固定剧本，含 RAG 记忆召回）
 python check_model.py                    # 接入 Qwen 后：连通性/延迟体检
@@ -82,7 +82,7 @@ python chat.py --persona 理性朋友 --user 小明
 
 | 命令 | 作用 |
 | --- | --- |
-| `/profile` | 查看累积出的用户画像（18 维里识别出了哪些） |
+| `/profile` | 查看累积出的用户画像（17 维里识别出了哪些） |
 | `/memory` | 查看记忆库里存了什么 |
 | `/recall 关键词` | 手动检索最相关的记忆 |
 | `/persona 名字` | 切换人设（温暖倾听者/理性朋友/元气鼓励师/治愈系陪伴） |
@@ -207,8 +207,8 @@ pipe.get_profile("u1"); pipe.reset("u1"); pipe.save(); pipe.load()
 
 ## 6. 自测结果与调优记录
 
-- 一键自测：**72/72 用例通过**（配置 / 画像 / 记忆 / 长对话记忆 / **持久化** / 对话 / **防瞎编** / 接口 / **日志可追溯性**，共 10 套件）
-- 画像抽取准确率：**50/50 个标签 = 1.0000**（自建标注样本，规则后端）
+- 一键自测：**75/75 用例通过**（配置 / 画像 / 记忆 / 长对话记忆 / **持久化** / 对话 / **防瞎编** / 接口 / **日志可追溯性**，共 10 套件）
+- 画像抽取准确率：**40/40 个标签 = 1.0000**（自建标注样本，规则后端）
 - 否定结构鲁棒性：**7/7**；误报回归：**3/3**
 - **长对话记忆：30 轮对话 + 触发压缩后，早期植入的 3 条事实仍能全部召回（3/3）**
 - **防瞎编：实体级 0 误杀、编造关系/宠物 5/5 全部拦下；端到端拦截已验证**
@@ -238,7 +238,7 @@ pipe.get_profile("u1"); pipe.reset("u1"); pipe.save(); pipe.load()
 ## 7. 当前状态与待确认事项
 
 ### 已完成（在模型/GitHub 未就绪情况下可先做的部分）
-- [x] 画像维度清单（18 维 / 6 大类）
+- [x] 画像维度清单（17 维 / 6 大类）
 - [x] RAG 向量记忆库（写入/检索/阈值/持久化/压缩）
 - [x] 4 套人设提示词 + 抗幻觉护栏
 - [x] 对话生成全链路 + 统一对外接口

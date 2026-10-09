@@ -58,16 +58,14 @@ dimensions:
     priority: 4
 
   # ---------- 二、情感与心理状态 ----------
-  - id: current_emotion
-    name: 当前情绪
-    category: 情感与心理状态
-    type: single_choice
-    options: [开心, 平静, 焦虑, 悲伤, 愤怒, 孤独, 疲惫, 未知]
-    description: 用户在当前对话轮次中表现出的主导情绪。
-    prompt_hint: 以最近1-3轮对话为主，多种情绪并存时取主导项。
-    example: '我好累啊，什么都不想干 -> 疲惫'
-    priority: 5
-
+  #
+  # 注意（Iter 20 决策）：**"当前情绪"维度已移除**。
+  # 原因：情绪识别由成员1 的情感识别模块负责，其输出通过
+  #   CompanionPipeline.chat(..., emotion_label=...)
+  # 注入提示词的【当前情绪】段落。若本模块再用规则抽一个"当前情绪"，
+  # 同一个 prompt 里会出现两个可能互相矛盾的情绪标签，模型会困惑。
+  # 故：**逐轮情绪一律以成员1 为准，本模块不重复判断**；
+  # 这里仅保留"整体情绪基调"这一**跨轮次的长期画像属性**（二者粒度不同）。
   - id: emotion_tone
     name: 整体情绪基调
     category: 情感与心理状态

@@ -28,9 +28,17 @@ def run():
     results.append({"name": "提示词含画像/记忆/情绪三段上下文", "ok": ok,
                     "info": "【用户画像】【相关记忆】【当前情绪】"})
 
-    # 4. 防瞎编护栏
-    ok = "不要臆测或虚构" in sysp and "不要编造" in sysp
-    results.append({"name": "防瞎编护栏已注入", "ok": ok, "info": "含禁止臆测/编造条款"})
+    # 4. 防瞎编护栏（校验"每条护栏都在"，不绑定具体措辞，便于 Iter 20 精简后仍有效）
+    from src.persona_prompts import SAFETY_GUARDRAILS
+    missing = [g[:10] for g in SAFETY_GUARDRAILS if g not in sysp]
+    results.append({"name": f"防瞎编护栏已注入({len(SAFETY_GUARDRAILS) - len(missing)}/{len(SAFETY_GUARDRAILS)})",
+                    "ok": not missing,
+                    "info": ("缺失：" + "；".join(missing)) if missing else "全部护栏条款均已注入"})
+
+    # 4b. 提示词紧凑度回归（Iter 20 精简后不应再膨胀 —— CPU 预填充是主要成本）
+    ok = len(sysp) <= 420
+    results.append({"name": "提示词长度受控(<=420字)", "ok": ok,
+                    "info": f"当前 {len(sysp)} 字（精简前 440 字）"})
 
     # 5. RAG 长对话记忆：先说偏好，再问"记得吗"，应检索到先前记忆
     gen.generate("我特别喜欢看科幻电影，周末常去电影院", user_id="u2")

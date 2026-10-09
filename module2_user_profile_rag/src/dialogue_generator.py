@@ -49,6 +49,20 @@ class DialogueGenerator:
         # 防瞎编校验器（实体级拦截 + 句级观测），配置见 persona.hallucination_check
         self.checker = FactConsistencyChecker(self.persona_cfg.get("hallucination_check"))
 
+        # 成员1 情感识别模块的标签集（仅用于**观测**，绝不拦截）。
+        # 逐轮情绪一律以成员1 传入的 emotion_label 为准；这里只记录
+        # "配置声明的标签集" 与 "实际收到的标签" 是否一致，便于发现口径漂移。
+        self.emotion_cfg = config.section("emotion")
+        self.known_emotions = set(self.emotion_cfg.get("labels") or [])
+        self.unseen_emotions: set[str] = set()   # 收到过、但不在声明标签集里的值
+
+    def emotion_report(self) -> dict:
+        """情绪标签对接情况（供 check_model.py 与成员3 核对口径）。"""
+        return {
+            "declared_labels": sorted(self.known_emotions),
+            "unseen_labels": sorted(self.unseen_emotions),
+        }
+
     # ------------------------------------------------------------------
     # 对外主入口
     # ------------------------------------------------------------------
@@ -65,6 +79,14 @@ class DialogueGenerator:
             return {"response": "", "error": "empty input"}
 
         persona_name = persona_name or self.persona_cfg.get("default_persona", "温暖倾听者")
+
+        # 情绪标签：一律以成员1 传入的为准。这里只做**观测**——
+        # 若收到的标签不在配置声明的标签集里，记录下来供核对口径，但绝不放行/拦截。
+        emotion_known = True
+        if emotion_label and self.known_emotions:
+            emotion_known = emotion_label in self.known_emotions
+            if not emotion_known:
+                self.unseen_emotions.add(emotion_label)
 
         # 1) RAG 检索相关记忆
         retrieved = self.memory.search(user_input, top_k=self.memory_cfg.get("top_k"))
@@ -109,6 +131,7 @@ class DialogueGenerator:
             "response": response,
             "persona": persona_name,
             "emotion_label": emotion_label,
+            "emotion_label_known": emotion_known,   # 是否在声明标签集内（仅观测）
             "retrieved_memories": [{"text": it["text"], "score": round(s, 3)} for it, s in retrieved],
             "profile": profile_flat,
             "hallucination_check": ah,   # 可观测：命中了哪些断言、是否被拦截

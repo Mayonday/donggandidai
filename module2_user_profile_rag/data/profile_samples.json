@@ -18,7 +18,6 @@
     "expected": {
       "age_group": "18-24",
       "occupation": "学生",
-      "current_emotion": "孤独",
       "loneliness_level": "高",
       "emotion_tone": "消极",
       "social_circle": "较孤单"
@@ -29,7 +28,6 @@
     "text": "我和对象异地好难，昨晚又想哭了，最近总是不开心。",
     "expected": {
       "relationship_status": "恋爱中",
-      "current_emotion": "悲伤",
       "emotion_tone": "消极",
       "topic_preference": "情感关系"
     }
@@ -47,8 +45,7 @@
     "text": "我一个人好想找人说说话，真的好孤单，特别想要人陪。",
     "expected": {
       "loneliness_level": "高",
-      "attachment_need": "高",
-      "current_emotion": "孤独"
+      "attachment_need": "高"
     }
   },
   {
@@ -56,7 +53,6 @@
     "text": "睡前听歌放松一下，感觉还好，没什么特别的。",
     "expected": {
       "hobbies": "音乐",
-      "current_emotion": "平静",
       "emotion_tone": "中性"
     }
   },
@@ -65,8 +61,7 @@
     "text": "又和我妈吵架了，真的好生气，爸妈总是理解不了我。",
     "expected": {
       "topic_preference": "家庭",
-      "family_relation": "紧张",
-      "current_emotion": "愤怒"
+      "family_relation": "紧张"
     }
   },
   {
@@ -93,7 +88,6 @@
     "expected": {
       "personality": "外向",
       "social_circle": "朋友较多",
-      "current_emotion": "开心",
       "emotion_tone": "积极"
     }
   },
@@ -101,7 +95,6 @@
     "id": "s11",
     "text": "最近总是不开心，做什么都提不起劲。",
     "expected": {
-      "current_emotion": "悲伤",
       "emotion_tone": "消极"
     }
   },
@@ -109,7 +102,6 @@
     "id": "s12",
     "text": "别担心我，我今天特别开心，项目顺利交付了！",
     "expected": {
-      "current_emotion": "开心",
       "emotion_tone": "积极"
     }
   },
@@ -126,7 +118,6 @@
     "expected": {
       "topic_preference": "家庭",
       "family_relation": "紧张",
-      "current_emotion": "愤怒",
       "emotion_tone": "消极"
     }
   },
@@ -135,8 +126,7 @@
     "text": "我比较内向，但最近交到了几个知心朋友，挺开心的。",
     "expected": {
       "personality": "内向",
-      "social_circle": "少数密友",
-      "current_emotion": "开心"
+      "social_circle": "少数密友"
     }
   }
 ]

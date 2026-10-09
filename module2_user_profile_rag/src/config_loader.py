@@ -119,26 +119,44 @@ def _load_yaml_file(path: str):
 
 
 # ---------------------------------------------------------------------------
-# 团队扁平配置 → 本模块嵌套 schema 的映射
+# 团队扁平配置 → 本模块嵌套 schema 的映射（**只读适配，绝不改团队文件**）
 #
-# 团队 config.yaml 是**扁平结构**（见 llm016/digital_human 仓库）：
-#     model_path: "./model/qwen2.5"
-#     max_new_tokens: 200
-#     temperature: 0.7
-#     emotion_threshold: 0.6
-#     embedding_model: "all-MiniLM-L6-v2"
-#     vector_db_path: "./memory_vector_db"
+# 【Iter 20 决策：配置格式统一以团队为准】
+#   团队 config.yaml 是**扁平结构**，这是全队唯一对外的配置格式。
+#   本模块内部用嵌套分节（model.* / embedding.* / memory.*）只是**实现细节**，
+#   不要求团队接受。因此：团队原有 5 个键原样支持，本模块的额外可调项
+#   也**一律用扁平键**暴露，避免出现"两套格式"。
 #
-# 本模块内部使用嵌套分节（model.* / embedding.* / memory.*）。
-# 若不映射，团队配置会被完整读入却**取不到值**，导致静默退回默认（mock）。
-# 该映射是"只读适配"：不修改团队文件，只在内存里转换。
+#   团队原有 5 键（值来自 llb016/digital_human 的 config.yaml，保持兼容）：
+#       model_path / max_new_tokens / temperature / embedding_model / vector_db_path
 # ---------------------------------------------------------------------------
 TEAM_FLAT_KEY_MAP = {
+    # ---- 团队原有键 ----
     "model_path":       ("model", "model_path"),
     "max_new_tokens":   ("model", "max_new_tokens"),
     "temperature":      ("model", "temperature"),
     "embedding_model":  ("embedding", "model_name"),
     "vector_db_path":   ("memory", "persist_path"),
+
+    # ---- 本模块可调项（同样扁平键，与团队格式保持一致，避免"两套格式"）----
+    "device":               ("model", "device"),           # auto / cpu / cuda
+    "dtype":                ("model", "dtype"),            # auto / float32 / bfloat16
+    "embedding_backend":    ("embedding", "backend"),
+    "ngram_min":            ("embedding", "ngram_min"),
+    "ngram_max":            ("embedding", "ngram_max"),
+    "function_word_weight": ("embedding", "function_word_weight"),
+    "memory_top_k":         ("memory", "top_k"),
+    "similarity_threshold": ("memory", "similarity_threshold"),
+    "relative_ratio":       ("memory", "relative_ratio"),
+    "max_dialogue_turns":   ("memory", "max_dialogue_turns"),
+    "max_facts":            ("memory", "max_facts"),
+    # 注意：扁平键名**不能与内部节名同名**（model/embedding/memory/profile/persona/emotion），
+    # 否则扁平值会在合并阶段把整个 dict 覆盖成标量。故用 default_persona 而非 persona。
+    "default_persona":      ("persona", "default_persona"),
+    "anti_hallucination":   ("persona", "anti_hallucination"),
+    "profile_backend":      ("profile", "backend"),
+    "profile_dimensions_path": ("profile", "dimensions_path"),
+    "emotion_labels":       ("emotion", "labels"),         # 成员1 的标签集（仅观测）
 }
 
 
@@ -148,8 +166,23 @@ def adapt_team_flat_config(cfg: dict) -> dict:
     注意：`model_path` 存在即说明团队用**本地 transformers 加载**，
     此时自动把 `model.backend` 切到 `transformers_local`——
     否则模块会拿着一个权重目录去请求 HTTP 接口，连不上还看不出原因。
-    显式写了 `model.backend` 时以显式值为准。
+    显式写了 `model.backend_explicit: true` 时以显式 backend 为准。
+
+    **键名冲突防护**：若某个扁平键与内部节名同名（如 `persona`），
+    扁平值会在合并阶段先一步把整个 dict 覆盖成标量，导致适配时报
+    `'str' object does not support item assignment`。这里显式检测并给出可操作的报错，
+    避免使用者面对一个晦涩的 TypeError。
     """
+    sections = ("model", "embedding", "memory", "profile", "persona", "emotion")
+    # 检测任何"遮蔽了分节名"的顶层键（它会把整个分节覆盖成标量）。
+    # 不能只遍历 TEAM_FLAT_KEY_MAP —— 冲突键恰恰是**不在**映射表里的那个名字。
+    collisions = [s for s in sections if s in cfg and not isinstance(cfg[s], dict)]
+    if collisions:
+        raise ValueError(
+            f"配置键名与内部节名冲突：{collisions}。"
+            f"请改用不带歧义的扁平键名（例如指定人设请写 default_persona，而不是 persona）。"
+        )
+
     flat_present = False
     for flat_key, (section, key) in TEAM_FLAT_KEY_MAP.items():
         if flat_key in cfg:
