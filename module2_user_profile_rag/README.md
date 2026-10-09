@@ -1,4 +1,4 @@
-# 成员2 模块：用户画像 + RAG 记忆 + 对话生成
+﻿# 成员2 模块：用户画像 + RAG 记忆 + 对话生成
 
 > 项目：**数字人综合情感陪伴对话模型**
 > 负责人：成员2　｜　版本：v0.1.0（离线可自测）
@@ -22,7 +22,8 @@ module2_user_profile_rag/
 ├── requirements.txt             # 依赖（核心仅 numpy，可选增强见注释）
 ├── config.example.yaml          # 本模块配置示例（不改公共 config.yaml）
 ├── run_self_test.py             # 一键自测入口
-├── demo_chat.py                 # 多轮对话端到端演示
+├── chat.py                      # ★ 交互式对话：人工输入文本测试
+├── demo_chat.py                 # 多轮对话端到端演示（固定剧本）
 ├── check_model.py               # ★ Qwen 接入体检（连通性/延迟/标记泄漏）
 ├── calibrate_threshold.py       # ★ RAG 检索标定（阈值/过滤/n-gram 扫描，含推荐配置）
 ├── profiles/
@@ -42,7 +43,7 @@ module2_user_profile_rag/
 │   ├── anti_hallucination.py    # ★ 防瞎编：事实一致性校验（实体级拦截+句级观测）
 │   ├── dialogue_generator.py    # ★ 对话生成
 │   └── pipeline.py              # ★ 统一对外接口 Facade
-├── tests/                       # 9 个自测套件（含长对话记忆、持久化、防瞎编、日志可追溯性）
+├── tests/                       # 10 个自测套件（含长对话记忆、持久化、防瞎编、日志可追溯性）
 ├── docs/
 │   ├── self_test_guide.md       # ★ 自测指南（步骤/结果解读/排错/检查清单）
 │   └── lora_plan.md             # LoRA 微调预案（触发条件+数据格式+配置）
@@ -60,10 +61,36 @@ cd module2_user_profile_rag
 pip install -r requirements.txt          # 最少只需 numpy（即可离线跑通）
 pip install sentence-transformers        # 推荐：启用高质量中文向量嵌入
 
-python run_self_test.py                  # 一键自测（62 个用例，约 6 秒）
-python demo_chat.py                      # 多轮对话演示（含 RAG 记忆召回）
+python run_self_test.py                  # 一键自测（72 个用例，约 7 秒）
+python chat.py                           # ★ 人工输入文本，和数字人对话
+python demo_chat.py                      # 多轮对话演示（固定剧本，含 RAG 记忆召回）
 python check_model.py                    # 接入 Qwen 后：连通性/延迟体检
 ```
+
+### 人工测试：`chat.py`
+
+自动化测试只能验证"逻辑对不对"；**回复像不像人、共情到不到位、人设有没有跑偏，必须靠人眼看**。
+
+```bash
+python chat.py                # 用配置里的后端（团队布局下 = 真实 Qwen）
+python chat.py --mock         # 强制离线 mock：不用模型、秒开，先验证交互逻辑
+python chat.py --show-context # 每轮额外打印召回的记忆
+python chat.py --persona 理性朋友 --user 小明
+```
+
+对话中可用命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/profile` | 查看累积出的用户画像（18 维里识别出了哪些） |
+| `/memory` | 查看记忆库里存了什么 |
+| `/recall 关键词` | 手动检索最相关的记忆 |
+| `/persona 名字` | 切换人设（温暖倾听者/理性朋友/元气鼓励师/治愈系陪伴） |
+| `/debug` | 查看上一轮实际发给模型的完整 system prompt |
+| `/reset` | 清空该用户的画像与历史 |
+| `/exit` | 退出（Ctrl+C / Ctrl+D 亦可） |
+
+> 提示：本地模型后端启动时会先加载权重（约 10~15 秒），之后每轮 10~15 秒（CPU 推理）。
 
 > 推荐安装 `sentence-transformers`：配置里 `embedding.backend` 默认就是它。
 > **若未安装也不会报错**——会自动降级为内置 `hashing` 并打印一次警告，
@@ -180,7 +207,7 @@ pipe.get_profile("u1"); pipe.reset("u1"); pipe.save(); pipe.load()
 
 ## 6. 自测结果与调优记录
 
-- 一键自测：**62/62 用例通过**（配置 / 画像 / 记忆 / 长对话记忆 / **持久化** / 对话 / **防瞎编** / 接口 / **日志可追溯性**，共 9 套件）
+- 一键自测：**72/72 用例通过**（配置 / 画像 / 记忆 / 长对话记忆 / **持久化** / 对话 / **防瞎编** / 接口 / **日志可追溯性**，共 10 套件）
 - 画像抽取准确率：**50/50 个标签 = 1.0000**（自建标注样本，规则后端）
 - 否定结构鲁棒性：**7/7**；误报回归：**3/3**
 - **长对话记忆：30 轮对话 + 触发压缩后，早期植入的 3 条事实仍能全部召回（3/3）**

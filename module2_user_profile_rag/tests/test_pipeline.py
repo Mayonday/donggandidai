@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """自测：统一对外接口（供成员1集成、成员3评测调用）。"""
 from tests import context
 
@@ -38,5 +38,43 @@ def run():
     ok = bool(prof2) and not after
     results.append({"name": "pipeline.reset 清空指定用户", "ok": ok,
                     "info": f"重置前 {len(prof2)} 项, 重置后 {len(after)} 项"})
+
+    # 5. 人设角色名展示（chat.py 用它做回复前缀）
+    from src.persona_prompts import persona_display_name
+    names = {p: persona_display_name(p) for p in
+             ["温暖倾听者", "理性朋友", "元气鼓励师", "治愈系陪伴"]}
+    expect = {"温暖倾听者": "小暖", "理性朋友": "小知",
+              "元气鼓励师": "小阳", "治愈系陪伴": "阿树"}
+    ok = names == expect
+    results.append({"name": "人设角色名解析", "ok": ok, "info": str(names)})
+
+    # 6. 交互式入口 chat.py 冒烟测试（人工输入文本测试所用的入口）
+    import subprocess
+    import sys as _sys
+    root = ctx["module_root"]
+    try:
+        p = subprocess.run(
+            [_sys.executable, "chat.py", "--mock", "--user", "smoke"],
+            input="你好，我是男生，在北京做程序员\n/profile\n/memory\n/exit\n",
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=root, timeout=120,
+        )
+        out = (p.stdout or "") + (p.stderr or "")
+        checks = {
+            "正常退出": p.returncode == 0,
+            "打印画像": ("用户画像" in out) and ("IT互联网" in out),
+            "打印记忆": "记忆库" in out,
+            "识别性别": "性别" in out,
+        }
+        bad = [k for k, v in checks.items() if not v]
+        results.append({
+            "name": "交互式入口 chat.py 冒烟测试",
+            "ok": not bad,
+            "info": ("失败项：" + "、".join(bad)) if bad
+                    else "/profile /memory /exit 命令均正常",
+        })
+    except Exception as e:  # noqa: BLE001
+        results.append({"name": "交互式入口 chat.py 冒烟测试", "ok": False,
+                        "info": f"{type(e).__name__}: {e}"})
 
     return {"suite": "统一对外接口", "results": results}

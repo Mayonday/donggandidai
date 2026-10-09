@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """数字人人设提示词模板。
 
 提供多套人设，以及把「人设 + 用户画像 + 相关记忆 + 当前情绪」组装成
@@ -10,6 +10,8 @@
     - 明确如何利用画像与记忆做到"记得住、接得上"。
 """
 from __future__ import annotations
+
+import re
 
 # 通用防"瞎编"护栏（追加到每套人设之后）
 SAFETY_GUARDRAILS = [
@@ -67,6 +69,17 @@ def get_persona(name: str | None = None) -> dict:
     if name not in PERSONAS:
         name = DEFAULT_PERSONA
     return {"name": name, **PERSONAS[name]}
+
+
+def persona_display_name(name: str | None = None) -> str:
+    """取人设的**角色名**（如 温暖倾听者 -> 小暖），用于界面展示。
+
+    角色名写在 role 文案里（"名叫「小暖」"），这里抽出来；
+    抽不到时退回人设标识，保证总有可展示的字符串。
+    """
+    persona = get_persona(name)
+    m = re.search(r"「(.{1,8})」", persona.get("role", ""))
+    return m.group(1) if m else persona["name"]
 
 
 def _format_profile(profile_flat: dict | None) -> str:
