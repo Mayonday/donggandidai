@@ -1,6 +1,6 @@
 # 成员2 模块自测报告（自动生成）
 
-- 生成时间：2026-10-09 10:38:04
+- 生成时间：2026-10-09 10:58:10
 - 解释器：`D:\py\.venv\Scripts\python.exe`
 - Python：3.14.7（Windows 11）
 - 大模型后端：`mock`（mock = 离线自测，不联网）
@@ -20,7 +20,7 @@
 
 | 用例 | 结果 | 说明 |
 | --- | --- | --- |
-| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'temperature', 'max_tokens', 'timeout', 'model_path', 'backend_explicit', 'device', 'max_new_tokens'] |
+| 配置节[model]存在 | ✅ PASS | ['backend', 'base_url', 'api_key_env', 'model_name', 'device', 'dtype', 'temperature', 'max_tokens', 'timeout', 'model_path', 'backend_explicit', 'max_new_tokens'] |
 | 配置节[embedding]存在 | ✅ PASS | ['backend', 'fallback_backend', 'model_name', 'dim', 'ngram_min', 'ngram_max', 'function_word_weight'] |
 | 配置节[memory]存在 | ✅ PASS | ['top_k', 'similarity_threshold', 'relative_ratio', 'similarity_threshold_by_backend', 'persist_path', 'max_dialogue_turns', 'summarize_every', 'max_facts'] |
 | 配置节[profile]存在 | ✅ PASS | ['dimensions_path', 'backend', 'min_confidence'] |
@@ -41,8 +41,8 @@
 | 无公共配置时安全退回内置默认 | ✅ PASS | backend=mock, top_k=5 |
 | backend_explicit 可强制用 mock（离线自测） | ✅ PASS | backend=mock，model_path 仍保留=True |
 | 团队配置无 model_path 时不误切后端 | ✅ PASS | backend=mock（应保持 mock） |
-| 本地后端：缺模型目录时报错可操作 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 2 个问题： |
-| 本地后端：缺 torch/transformers 时提示安装 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 1 个问题： |
+| 本地后端：缺模型目录时报错可操作 | ✅ PASS | 本地模型后端（transformers_local）无法启动，发现 1 个问题： |
+| 本地后端：缺 torch/transformers 时提示安装 | ✅ PASS | 本机已装 transformers，跳过该分支 |
 | 多次加载配置互不污染（DEFAULTS 别名回归） | ✅ PASS | 团队配置=transformers_local, 空环境=mock |
 
 ### 用户画像抽取
@@ -63,7 +63,7 @@
 | 检索排序(篮球命中) | ✅ PASS | top1=我特别喜欢打篮球，每周都去球场 score=0.452 |
 | 相似度阈值过滤无关查询 | ✅ PASS | 命中数=0 |
 | 检索结果可格式化注入提示词 | ✅ PASS | - [turn] 我特别喜欢打篮球，每周都去球场 (相关度0.45) |
-| 记录一轮对话返回2条记忆 | ✅ PASS | 2fba1686…/05d27247… |
+| 记录一轮对话返回2条记忆 | ✅ PASS | 9df0f4e5…/5442805e… |
 | 记忆持久化与加载(round-trip) | ✅ PASS | 原5条, 载入5条 |
 | 分层压缩tier1(原始轮→事实记忆) | ✅ PASS | 原始轮=3<=上限5, 事实=5, 摘要=8, 总=16 |
 | 分层压缩tier2(事实→摘要) | ✅ PASS | 事实=5<=上限6, 摘要=8 |

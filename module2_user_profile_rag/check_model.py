@@ -65,24 +65,54 @@ def main():
     backend = cfg.get("model.backend")
     base_url = cfg.get("model.base_url")
     model_name = cfg.get("model.model_name")
+    model_path = cfg.get("model.model_path")
 
     print("=" * 70)
     print("Qwen 模型接入体检")
     print("=" * 70)
     print(f"解释器    : {sys.executable}")
     print(f"backend   : {backend}")
-    print(f"base_url  : {base_url}")
-    print(f"model_name: {model_name}")
+    if backend == "transformers_local":
+        print(f"model_path: {model_path}")
+        print(f"device    : {cfg.get('model.device')}")
+        print(f"max_new_tokens: {cfg.get('model.max_new_tokens')}")
+    else:
+        print(f"base_url  : {base_url}")
+        print(f"model_name: {model_name}")
+    if cfg.get("_public_config_path"):
+        print(f"公共配置  : {cfg.get('_public_config_path')}（团队统一配置，本模块只读）")
     print("-" * 70)
 
     problems = []
 
-    if backend != "openai_compatible":
-        print("[!] 当前 backend 不是 openai_compatible，本次只是 mock 自检。")
-        print("    要体检真实 Qwen，请把 config.yaml 的 model.backend 改为 openai_compatible。")
+    if backend == "mock":
+        print("[!] 当前 backend 是 mock（离线模式），本次只验证接口连通性，不加载真实模型。")
+        print("    要体检真实 Qwen：把 config.yaml 的 backend_explicit 去掉")
+        print("    或提供 model_path（自动切 transformers_local）。")
         print()
 
-    # ---------- 0. 模型名核对（vLLM 可能用 --served-model-name 改过名）----------
+    # ---------- 0a. 本地后端：核对权重目录 ----------
+    if backend == "transformers_local":
+        print("【0】核对本地权重目录")
+        ok_path = bool(model_path) and os.path.isdir(model_path)
+        print(f"  [{_ok(ok_path)}] {model_path}")
+        if ok_path:
+            import glob as _glob
+            weights = _glob.glob(os.path.join(model_path, "*.safetensors")) + \
+                      _glob.glob(os.path.join(model_path, "*.bin"))
+            size_gb = sum(os.path.getsize(w) for w in weights) / (1024 ** 3)
+            need_gb = size_gb * 1.6 if str(cfg.get("model.device")) != "cpu" else size_gb * 1.4
+            print(f"        权重文件 {len(weights)} 个，约 {size_gb:.1f} GB"
+                  f"（加载预计需 {need_gb:.1f} GB 内存/显存）")
+            if not weights:
+                print("        [问题] 目录里没有 .safetensors/.bin 权重文件，下载可能不完整")
+                problems.append("权重文件缺失")
+        else:
+            print("        请先下载权重（modelscope 示例见 src/llm_client.py 的报错提示）")
+            problems.append("本地权重目录不存在")
+        print()
+
+    # ---------- 0b. HTTP 后端：核对模型名（vLLM 可能用 --served-model-name 改过名）----------
     if backend == "openai_compatible":
         print("【0】核对 model_name（查询服务端 /v1/models）")
         import os as _os
@@ -108,6 +138,25 @@ def main():
 
     # ---------- 1. 直接调用模型 ----------
     llm = LLMClient(cfg.section("model"))
+
+    # 本地后端：先把"权重加载"单独计时，避免把加载耗时算进首字延迟。
+    # 主程序应在启动阶段调用 warmup() 完成这件事。
+    if backend == "transformers_local":
+        print("【1】加载本地权重（warmup，主程序应在启动时完成）")
+        try:
+            load_s = llm.warmup()
+            print(f"  [OK  ] 权重加载完成，耗时 {load_s} s，设备={llm._model.device}")
+        except Exception as e:  # noqa: BLE001
+            print(f"  [{_ok(False)}] 加载失败：{type(e).__name__}")
+            print(str(e))
+            print()
+            print("  排查建议：")
+            print("    1) pip install torch transformers accelerate")
+            print("    2) 确认 model_path 指向的目录里有 config.json 与 *.safetensors")
+            print("    3) 内存不足时可在配置里加 device: cpu 并减少 max_new_tokens")
+            return 1
+        print()
+
     messages = [
         {"role": "system", "content": "你是温暖倾听者小暖，回复简短自然，1~2句话。"},
         {"role": "user", "content": "你好，我今天有点累。"},

@@ -44,6 +44,8 @@ class LLMClient:
         # 团队配置用 max_new_tokens，本模块通用字段是 max_tokens，二者取其一
         self.max_new_tokens = int(model_cfg.get("max_new_tokens") or self.max_tokens)
         self.device = model_cfg.get("device", "auto")
+        # 权重精度：auto（默认，CPU 上自动用 fp32）/ float32 / bfloat16 / float16
+        self.dtype = str(model_cfg.get("dtype", "auto"))
         self._tokenizer = None
         self._model = None
         self.loaded = False          # 是否已加载权重（供预热/诊断使用）
@@ -116,12 +118,48 @@ class LLMClient:
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_path)
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
-            torch_dtype="auto",      # 按权重自带精度加载（bf16 权重不会被放大成 fp32）
+            **self._dtype_kwargs(),
             device_map=self.device,  # "auto"：有 GPU 用 GPU，没有则 CPU
         )
         self._model.eval()
         self.loaded = True
         self.load_seconds = round(time.time() - t0, 2)
+
+    def _dtype_kwargs(self) -> dict:
+        """按设备选择权重精度。
+
+        **实测结论（logs Iter 18）**：本机（Intel Core Ultra 7 155H，无 AVX512-BF16）
+        用 bf16 加载时矩阵乘是**软件模拟**，比 fp32 慢 2.8 倍：
+
+            同一 prompt / 同一输出    bf16: 22.5s (1.29 tok/s)
+                                      fp32:  8.0s (3.63 tok/s)
+
+        因此 CPU 上**必须用 fp32**；有 GPU 时才交给 transformers 按权重自适应
+        （bf16 权重不会被放大成 fp32，省显存）。
+
+        注意：transformers 5.x 把 `torch_dtype` 改名为 `dtype`，
+        这里优先用新名，旧版本自动回退。
+        """
+        if self.dtype and self.dtype != "auto":
+            chosen = self.dtype
+        else:
+            # 判断"实际会落在 CPU 上"：设备显式是 cpu，或 auto 且无可用 CUDA。
+            # 注意不能只判 `device == "cpu"` —— 配置默认是 "auto"，
+            # 那样会漏判、又退回 bf16（实测慢 2.8 倍）。
+            import torch
+            on_cpu = (str(self.device) == "cpu"
+                      or (str(self.device) == "auto" and not torch.cuda.is_available()))
+            chosen = "float32" if on_cpu else "auto"
+
+        # transformers 5.x 把 `torch_dtype` 改名为 `dtype`（旧名会告警但仍可用）。
+        # 按主版本号选择，避免产生废弃告警，同时兼容 4.x。
+        try:
+            import transformers
+            major = int(str(transformers.__version__).split(".")[0])
+        except Exception:  # noqa: BLE001
+            major = 4
+        key = "dtype" if major >= 5 else "torch_dtype"
+        return {key: chosen}
 
     def _chat_local(self, messages, temperature, max_tokens) -> str:
         self._ensure_loaded()

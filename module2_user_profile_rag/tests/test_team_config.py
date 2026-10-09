@@ -60,7 +60,10 @@ def run():
         cfg = load_config(module_dir)
 
         checks = {
-            "model.model_path": (cfg.get("model", {}).get("model_path"), "./model/qwen2.5"),
+            # model_path 会被解析为绝对路径（相对 config.yaml 所在目录），
+            # 因此这里断言其结尾，而不是原始字符串
+            "model.model_path 解析为绝对路径":
+                (cfg.get("model", {}).get("model_path", "").replace("\\", "/").endswith("model/qwen2.5"), True),
             "model.backend 自动推断": (cfg.get("model", {}).get("backend"), "transformers_local"),
             "model.max_tokens <- max_new_tokens": (cfg.get("model", {}).get("max_tokens"), 200),
             "model.temperature": (cfg.get("model", {}).get("temperature"), 0.7),

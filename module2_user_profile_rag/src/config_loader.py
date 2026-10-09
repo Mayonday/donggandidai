@@ -28,6 +28,9 @@ DEFAULTS = {
         # 团队已确定使用 Qwen 系列；此处为默认值，实际以团队 config.yaml 为准。
         # model_name 必须与推理服务暴露的名字完全一致（vLLM 用 HF 仓库名，Ollama 用 qwen2.5:7b）。
         "model_name": "Qwen/Qwen2.5-7B-Instruct",
+        # CPU 上必须用 fp32：bf16 无硬件加速时是软件模拟，实测慢 2.8 倍（Iter 18）
+        "device": "auto",
+        "dtype": "auto",
         "temperature": 0.7,
         "max_tokens": 512,
         "timeout": 60,
@@ -231,7 +234,28 @@ def load_config(module_dir: str | None = None, team_flat: bool = True) -> dict:
     if team_flat:
         cfg = adapt_team_flat_config(cfg)
 
+    # f. 解析团队配置里的相对 model_path
+    #    团队写的是 `model_path: "./model/qwen2.5"`，而相对路径默认相对**进程当前目录**
+    #    —— 从不同目录启动就会找不到权重（实测：模型在 D:\动感地带1\model\qwen2.5，
+    #    只有在 D:\动感地带1 下启动才命中）。这里改为相对 **config.yaml 所在目录** 解析，
+    #    消除对启动目录的依赖。
+    #    仅处理 model_path：它是唯一由团队配置提供、且会因此失效的路径；
+    #    persist_path / dimensions_path 仍走 Config.resolve（相对模块目录），语义更明确。
+    if cfg.get("model", {}).get("model_path"):
+        base = os.path.dirname(public) if public else module_dir
+        cfg["model"]["model_path"] = _to_abs(cfg["model"]["model_path"], base)
+    cfg["_config_base_dir"] = os.path.dirname(public) if public else os.path.abspath(module_dir)
+
     return cfg
+
+
+def _to_abs(path: str, base_dir: str) -> str:
+    """把相对路径按 base_dir 解析为绝对路径；URL 与绝对路径原样返回。"""
+    if not path or not isinstance(path, str):
+        return path
+    if os.path.isabs(path) or path.startswith(("http://", "https://")):
+        return path
+    return os.path.abspath(os.path.join(base_dir, path))
 
 
 class Config:

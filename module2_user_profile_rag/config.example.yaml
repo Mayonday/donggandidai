@@ -34,6 +34,13 @@ model:
   api_key_env: "OPENAI_API_KEY"
   model_name: "Qwen/Qwen2.5-7B-Instruct"
   device: auto                  # transformers_local 用：auto / cpu / cuda
+  # 权重精度。auto = 智能选择：**CPU 上自动用 float32**，有 GPU 时才交给
+  # transformers 按权重自适应。原因见 logs Iter 18 实测：
+  #   本机（Intel Core Ultra 7 155H，无 AVX512-BF16）bf16 是软件模拟，
+  #   同一 prompt 同一输出—— bf16: 22.5s(1.29 tok/s)  vs  fp32: 8.0s(3.63 tok/s)
+  #   真实多轮链路：31/33/42s  ->  14.6/9.4/10.4s（快 2.5~3 倍）
+  # 可选值：auto | float32 | bfloat16 | float16
+  dtype: auto
   max_new_tokens: 200           # 与团队字段同名（会同步到 max_tokens）
   max_tokens: 200
   temperature: 0.7
